@@ -13,9 +13,7 @@ import { extractBorrowLog, extractPaymentLog, extractRepayLog } from './helpers/
 import {
   TestERC20,
   TestERC721,
-  Kettle,
-  Helpers,
-  Transfer,
+  Kettle
 } from "../typechain-types";
 import { LienStruct } from "../typechain-types/contracts/Kettle";
 
