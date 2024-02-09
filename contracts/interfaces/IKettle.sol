@@ -7,6 +7,7 @@ interface IKettle {
         uint256 indexed lienId,
         address indexed lender,
         address indexed borrower,
+        address recipient,
         address collection,
         address currency,
         uint256 tokenId,
@@ -17,7 +18,8 @@ interface IKettle {
         uint256 tenor,
         uint256 startTime,
         uint256 defaultPeriod,
-        uint256 defaultRate
+        uint256 defaultRate,
+        uint256 fee
     );
 
     event Payment(

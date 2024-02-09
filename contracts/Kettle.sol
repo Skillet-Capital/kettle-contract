@@ -16,13 +16,17 @@ contract Kettle is IKettle {
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
-    function amountOwed(Lien memory lien) public view returns (uint256) {
-        return Helpers.amountOwed(lien);
+    function amountOwed(Lien memory lien) public view returns (uint256 amount) {
+        (amount,,) = Helpers.computeAmountOwed(lien);
     }
 
     function lienStatus(Lien memory lien) public view returns (LienStatus) {
-        if (lien.state.lastPayment + lien.period + lien.defaultPeriod < block.timestamp) {
+        if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
+        } else if (lien.state.lastPayment + lien.period + lien.defaultPeriod < block.timestamp) {
+            return LienStatus.DEFAULTED;
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return LienStatus.DELINQUENT;
         } else if (lien.state.lastPayment + lien.period < block.timestamp) {
             return LienStatus.DELINQUENT;
         } else {
@@ -41,10 +45,7 @@ contract Kettle is IKettle {
         address borrower,
         bytes32[] calldata proof
     ) public returns (uint256 lienId){
-        // set custom borrower
-        if (borrower == address(0)) {
-            borrower = msg.sender;
-        }
+        if (borrower == address(0)) borrower = msg.sender;
 
         lienId = _borrow(offer, amount, tokenId, borrower);
 
@@ -64,6 +65,7 @@ contract Kettle is IKettle {
 
         Lien memory lien = Lien(
             offer.lender,
+            offer.recipient,
             borrower,
             offer.currency,
             offer.collection,
@@ -76,6 +78,7 @@ contract Kettle is IKettle {
             block.timestamp,
             offer.defaultPeriod,
             offer.defaultRate,
+            offer.fee,
             LienState({
                 lastPayment: block.timestamp,
                 amountOwed: amount
@@ -90,6 +93,7 @@ contract Kettle is IKettle {
             lienId,
             lien.lender,
             lien.borrower,
+            lien.recipient,
             lien.collection,
             address(lien.currency),
             lien.tokenId,
@@ -100,7 +104,8 @@ contract Kettle is IKettle {
             lien.tenor,
             lien.startTime,
             lien.defaultPeriod,
-            lien.defaultRate
+            lien.defaultRate,
+            lien.fee
         );
     }
 
@@ -109,41 +114,52 @@ contract Kettle is IKettle {
         uint256 amount,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        uint256 _amount = _payment(lien, lienId, amount, false);
+        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, amount);
 
         // transfer amount from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, _amount);
+        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, lenderInterest + principal);
+
+        // transfer fee interest from borrower to fee receiver
+        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, feeInterest);
     }
 
     function interestPayment(
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        uint256 _amount = _payment(lien, lienId, 0, true);
+        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, 0);
 
-        // transfer amount from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, _amount);
+        // transfer lender interest from borrower to lender
+        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, lenderInterest + principal);
+
+        // transfer fee interest from borrower to fee receiver
+        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, feeInterest);
     }
 
     function _payment(
         Lien calldata lien,
         uint256 lienId,
-        uint256 amount,
-        bool allInterest
-    ) internal returns (uint256 _amount) {
-        uint256 amountOwed = Helpers.amountOwed(lien);
+        uint256 amount
+    ) internal returns (
+        uint256 feeInterest, 
+        uint256 lenderInterest, 
+        uint256 principal
+    ) {
+        uint256 amountOwed;
+        (
+            amountOwed, 
+            feeInterest, 
+            lenderInterest, 
+            principal
+        ) = Helpers.interestPaymentBreakdown(lien, amount);
 
-        // amount to pay is min of amount and amount owed
-        if (allInterest) {
-            _amount = amountOwed - lien.principal;
-        } else {
-            // amount to pay is min of amount and amount owed
-            _amount = Math.min(amount, amountOwed);
-        }
+        // calculate total amount paid
+        uint256 _amount = feeInterest + lenderInterest + principal;
 
         // update lien state
         Lien memory newLien = Lien(
             lien.lender,
+            lien.recipient,
             lien.borrower,
             lien.currency,
             lien.collection,
@@ -156,15 +172,14 @@ contract Kettle is IKettle {
             lien.startTime,
             lien.defaultPeriod,
             lien.defaultRate,
+            lien.fee,
             LienState({
                 lastPayment: block.timestamp,
                 amountOwed: amountOwed - _amount
             })
         );
 
-        unchecked {
-            liens[lienId] = keccak256(abi.encode(newLien));
-        }
+        liens[lienId] = keccak256(abi.encode(newLien));
 
         emit Payment(lienId, _amount, amountOwed - _amount);
     }
@@ -173,20 +188,32 @@ contract Kettle is IKettle {
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        uint256 amountOwed = _repay(lien, lienId);
+        (
+            uint256 feeInterest, 
+            uint256 lenderInterest, 
+            uint256 principal
+        ) = _repay(lien, lienId);
 
         // transfer collateral back to borrower
         Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
 
         // transfer amount owed from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, amountOwed);
+        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, principal + lenderInterest);
+
+        // transfer fee interest from borrower to fee receiver
+        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, feeInterest);
     }
 
     function _repay(
         Lien calldata lien,
         uint256 lienId
-    ) internal returns (uint256 amountOwed) {
-        amountOwed = Helpers.amountOwed(lien);
+    ) internal returns (
+        uint256 feeInterest,
+        uint256 lenderInterest,
+        uint256 principal
+    ) {
+        uint256 amountOwed;
+        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, 0);
 
         delete liens[lienId];
 

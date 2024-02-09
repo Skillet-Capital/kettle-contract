@@ -5,7 +5,25 @@ import "hardhat-gas-reporter";
 import "hardhat-tracer";
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.20",
+  solidity: {
+    compilers: [
+      {
+        version: "0.8.20",
+        settings: {
+          viaIR: true,
+          optimizer: {
+            enabled: true,
+            runs: 200,
+            details: {
+              yulDetails: {
+                optimizerSteps: "u",
+              },
+            },
+          },
+        },
+      },
+    ]
+  },
   warnings: 'off',
   networks: {
     hardhat: {

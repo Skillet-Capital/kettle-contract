@@ -5,26 +5,53 @@ import "solmate/src/utils/SignedWadMath.sol";
 
 import { Lien } from "./Structs.sol";
 
-import "hardhat/console.sol";
-
 library Helpers {
     int256 private constant _YEAR_WAD = 365 days * 1e18;
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    error InvalidExecution();
+    function interestPaymentBreakdown(Lien memory lien, uint256 amount) 
+        public 
+        view 
+        returns (
+            uint256 amountOwed,
+            uint256 feeInterest, 
+            uint256 lenderInterest, 
+            uint256 principal
+        ) 
+    {
+        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien);
+        if (amount > feeInterest + lenderInterest) {
+            principal = amount - feeInterest - lenderInterest;
+        }
+    }
 
-    function amountOwed(Lien memory lien) public view returns (uint256) {
+    function computeAmountOwed(Lien memory lien)
+        public 
+        view 
+        returns (
+            uint256 amountOwed,
+            uint256 feeInterest,
+            uint256 lenderInterest
+        ) 
+    {
+
+        uint256 amountWithFee = computeCurrentDebt(
+            lien.state.amountOwed, 
+            lien.fee,
+            lien.state.lastPayment, 
+            block.timestamp
+        );
 
         // lien is past tenor
         if (block.timestamp > lien.startTime + lien.tenor) {
             uint256 periodAmount = computeCurrentDebt(
-                lien.state.amountOwed, 
+                amountWithFee, 
                 lien.rate, 
                 lien.state.lastPayment, 
                 lien.startTime + lien.tenor
             );
-            return computeCurrentDebt(
+            amountOwed = computeCurrentDebt(
                 periodAmount, 
                 lien.defaultRate, 
                 lien.startTime + lien.tenor, 
@@ -34,12 +61,12 @@ library Helpers {
 
         else if (block.timestamp > lien.state.lastPayment + lien.period) {
             uint256 periodAmount = computeCurrentDebt(
-                lien.state.amountOwed, 
+                amountWithFee, 
                 lien.rate, 
                 lien.state.lastPayment, 
                 lien.state.lastPayment + lien.period
             );
-            return computeCurrentDebt(
+            amountOwed = computeCurrentDebt(
                 periodAmount, 
                 lien.defaultRate, 
                 lien.state.lastPayment + lien.period, 
@@ -49,13 +76,16 @@ library Helpers {
 
         // the debt is current
         else {
-            return computeCurrentDebt(
-                lien.state.amountOwed, 
+            amountOwed = computeCurrentDebt(
+                amountWithFee, 
                 lien.rate, 
                 lien.state.lastPayment, 
                 block.timestamp
             );
         }
+
+        feeInterest = amountWithFee - lien.principal;
+        lenderInterest = amountOwed - amountWithFee;
     }
 
     /**
