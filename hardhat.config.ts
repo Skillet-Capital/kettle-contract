@@ -1,6 +1,7 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import 'hardhat-ignore-warnings';
+import "hardhat-gas-reporter";
 import "hardhat-tracer";
 
 const config: HardhatUserConfig = {
@@ -13,6 +14,9 @@ const config: HardhatUserConfig = {
       gas: 2100000,
       blockGasLimit: 0x1fffffffffffff,
     },
+  },
+  gasReporter: {
+    enabled: true
   }
 };
 
