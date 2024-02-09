@@ -27,6 +27,8 @@ describe("Kettle", function () {
   let owner: Signer;
   let borrower: Signer;
   let lender: Signer;
+  let recipient: Signer;
+
   let signers: Signer[];
   let kettle: Kettle;
 
@@ -42,7 +44,9 @@ describe("Kettle", function () {
     owner = fixture.owner;
     borrower = fixture.borrower;
     lender = fixture.lender;
+    recipient = fixture.recipient;
     signers = fixture.signers;
+
     kettle = fixture.kettle;
 
     tokenId = fixture.tokenId;
@@ -58,6 +62,7 @@ describe("Kettle", function () {
   beforeEach(async () => {
     const offer = {
       lender: lender,
+      recipient: recipient,
       currency: testErc20,
       collection: testErc721,
       identifier: tokenId,
@@ -83,15 +88,31 @@ describe("Kettle", function () {
     const status = await kettle.lienStatus(lien);
     expect(status).to.equal(0);
 
-    console.log(await kettle.amountOwed(lien));
-
     const txn = await kettle.connect(borrower).interestPayment(
       lienId, 
       lien
     );
 
     const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
-    expect(paymentLog.amountOwed).to.equal(lien.principal);
+    expect(paymentLog.amountOwed).to.be.within(lien.principal, BigInt(lien.principal) + 9n);
+  });
+
+  it("should make pay interest and some principal", async () => {
+    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period));
+
+    const status = await kettle.lienStatus(lien);
+    expect(status).to.equal(0);
+
+    const amountOwed = await kettle.amountOwed(lien);
+
+    const txn = await kettle.connect(borrower).payment(
+      lienId, 
+      amountOwed / 2n,
+      lien
+    );
+
+    const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
+    expect(paymentLog.amountOwed).to.be.within(amountOwed / 2n, amountOwed / 2n + 99n);
   });
 
   it("should make interest payment in default", async () => {

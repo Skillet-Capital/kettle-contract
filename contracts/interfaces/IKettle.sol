@@ -7,6 +7,7 @@ interface IKettle {
         uint256 indexed lienId,
         address indexed lender,
         address indexed borrower,
+        address recipient,
         address collection,
         address currency,
         uint256 tokenId,

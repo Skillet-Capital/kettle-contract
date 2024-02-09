@@ -14,6 +14,7 @@ struct LienState {
 
 struct Lien {
     address lender;
+    address recipient;
     address borrower;
     address currency;
     address collection;
@@ -32,6 +33,7 @@ struct Lien {
 
 struct LoanOffer {
     address lender;
+    address recipient;
     address currency;
     address collection;
     uint256 identifier;

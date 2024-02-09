@@ -24,6 +24,7 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
     lien: {
       lender: lien.lender,
       borrower: lien.borrower,
+      recipient: lien.recipient,
       currency: lien.currency,
       collection: lien.collection,
       tokenId: lien.tokenId,

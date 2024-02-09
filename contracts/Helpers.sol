@@ -14,19 +14,50 @@ library Helpers {
 
     error InvalidExecution();
 
-    function amountOwed(Lien memory lien) public view returns (uint256) {
+    function interestPaymentBreakdown(Lien memory lien, uint256 amount) 
+        external 
+        view 
+        returns (
+            uint256 amountOwed,
+            uint256 feeInterest, 
+            uint256 lenderInterest, 
+            uint256 principal
+        ) 
+    {
+        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien);
+        if (amount > feeInterest + lenderInterest) {
+            principal = amount - feeInterest - lenderInterest;
+        }
+    }
+
+    function computeAmountOwed(Lien memory lien)
+        public 
+        view 
+        returns (
+            uint256 amountOwed,
+            uint256 feeInterest,
+            uint256 lenderInterest
+        ) 
+    {
+
+        uint256 amountWithFee = computeCurrentDebt(
+            lien.state.amountOwed, 
+            lien.fee,
+            lien.state.lastPayment, 
+            block.timestamp
+        );
 
         // lien is past tenor
         if (block.timestamp > lien.startTime + lien.tenor) {
             uint256 periodAmount = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate + lien.fee, 
+                amountWithFee, 
+                lien.rate, 
                 lien.state.lastPayment, 
                 lien.startTime + lien.tenor
             );
-            return computeCurrentDebt(
+            amountOwed = computeCurrentDebt(
                 periodAmount, 
-                lien.defaultRate + lien.fee, 
+                lien.defaultRate, 
                 lien.startTime + lien.tenor, 
                 block.timestamp
             );
@@ -34,14 +65,14 @@ library Helpers {
 
         else if (block.timestamp > lien.state.lastPayment + lien.period) {
             uint256 periodAmount = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate + lien.fee, 
+                amountWithFee, 
+                lien.rate, 
                 lien.state.lastPayment, 
                 lien.state.lastPayment + lien.period
             );
-            return computeCurrentDebt(
+            amountOwed = computeCurrentDebt(
                 periodAmount, 
-                lien.defaultRate + lien.fee, 
+                lien.defaultRate, 
                 lien.state.lastPayment + lien.period, 
                 block.timestamp
             );
@@ -49,13 +80,16 @@ library Helpers {
 
         // the debt is current
         else {
-            return computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate + lien.fee, 
+            amountOwed = computeCurrentDebt(
+                amountWithFee, 
+                lien.rate, 
                 lien.state.lastPayment, 
                 block.timestamp
             );
         }
+
+        feeInterest = amountWithFee - lien.principal;
+        lenderInterest = amountOwed - amountWithFee;
     }
 
     /**
