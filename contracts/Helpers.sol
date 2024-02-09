@@ -5,17 +5,13 @@ import "solmate/src/utils/SignedWadMath.sol";
 
 import { Lien } from "./Structs.sol";
 
-import "hardhat/console.sol";
-
 library Helpers {
     int256 private constant _YEAR_WAD = 365 days * 1e18;
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    error InvalidExecution();
-
     function interestPaymentBreakdown(Lien memory lien, uint256 amount) 
-        external 
+        public 
         view 
         returns (
             uint256 amountOwed,

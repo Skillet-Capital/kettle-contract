@@ -11,8 +11,6 @@ import { IKettle } from "./interfaces/IKettle.sol";
 import { Helpers } from "./Helpers.sol";
 import { Transfer } from "./Transfer.sol";
 
-import "hardhat/console.sol";
-
 contract Kettle is IKettle {
 
     uint256 private _nextLienId;
@@ -23,8 +21,12 @@ contract Kettle is IKettle {
     }
 
     function lienStatus(Lien memory lien) public view returns (LienStatus) {
-        if (lien.state.lastPayment + lien.period + lien.defaultPeriod < block.timestamp) {
+        if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
+        } else if (lien.state.lastPayment + lien.period + lien.defaultPeriod < block.timestamp) {
+            return LienStatus.DEFAULTED;
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return LienStatus.DELINQUENT;
         } else if (lien.state.lastPayment + lien.period < block.timestamp) {
             return LienStatus.DELINQUENT;
         } else {
@@ -43,10 +45,7 @@ contract Kettle is IKettle {
         address borrower,
         bytes32[] calldata proof
     ) public returns (uint256 lienId){
-        // set custom borrower
-        if (borrower == address(0)) {
-            borrower = msg.sender;
-        }
+        if (borrower == address(0)) borrower = msg.sender;
 
         lienId = _borrow(offer, amount, tokenId, borrower);
 
@@ -115,7 +114,7 @@ contract Kettle is IKettle {
         uint256 amount,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, amount, true);
+        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, amount);
 
         // transfer amount from borrower to lender
         IERC20(lien.currency).transferFrom(msg.sender, lien.lender, lenderInterest + principal);
@@ -128,7 +127,7 @@ contract Kettle is IKettle {
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, 0, true);
+        (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, 0);
 
         // transfer lender interest from borrower to lender
         IERC20(lien.currency).transferFrom(msg.sender, lien.lender, lenderInterest + principal);
@@ -140,9 +139,12 @@ contract Kettle is IKettle {
     function _payment(
         Lien calldata lien,
         uint256 lienId,
-        uint256 amount,
-        bool allInterest
-    ) internal returns (uint256 feeInterest, uint256 lenderInterest, uint256 principal) {
+        uint256 amount
+    ) internal returns (
+        uint256 feeInterest, 
+        uint256 lenderInterest, 
+        uint256 principal
+    ) {
         uint256 amountOwed;
         (
             amountOwed, 
@@ -151,6 +153,7 @@ contract Kettle is IKettle {
             principal
         ) = Helpers.interestPaymentBreakdown(lien, amount);
 
+        // calculate total amount paid
         uint256 _amount = feeInterest + lenderInterest + principal;
 
         // update lien state
@@ -176,9 +179,7 @@ contract Kettle is IKettle {
             })
         );
 
-        unchecked {
-            liens[lienId] = keccak256(abi.encode(newLien));
-        }
+        liens[lienId] = keccak256(abi.encode(newLien));
 
         emit Payment(lienId, _amount, amountOwed - _amount);
     }
