@@ -20,13 +20,13 @@ library Helpers {
         if (block.timestamp > lien.startTime + lien.tenor) {
             uint256 periodAmount = computeCurrentDebt(
                 lien.state.amountOwed, 
-                lien.rate, 
+                lien.rate + lien.fee, 
                 lien.state.lastPayment, 
                 lien.startTime + lien.tenor
             );
             return computeCurrentDebt(
                 periodAmount, 
-                lien.defaultRate, 
+                lien.defaultRate + lien.fee, 
                 lien.startTime + lien.tenor, 
                 block.timestamp
             );
@@ -35,13 +35,13 @@ library Helpers {
         else if (block.timestamp > lien.state.lastPayment + lien.period) {
             uint256 periodAmount = computeCurrentDebt(
                 lien.state.amountOwed, 
-                lien.rate, 
+                lien.rate + lien.fee, 
                 lien.state.lastPayment, 
                 lien.state.lastPayment + lien.period
             );
             return computeCurrentDebt(
                 periodAmount, 
-                lien.defaultRate, 
+                lien.defaultRate + lien.fee, 
                 lien.state.lastPayment + lien.period, 
                 block.timestamp
             );
@@ -51,7 +51,7 @@ library Helpers {
         else {
             return computeCurrentDebt(
                 lien.state.amountOwed, 
-                lien.rate, 
+                lien.rate + lien.fee, 
                 lien.state.lastPayment, 
                 block.timestamp
             );

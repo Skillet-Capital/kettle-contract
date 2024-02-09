@@ -67,9 +67,10 @@ describe("Kettle", function () {
       minAmount: principal,
       tenor: DAY_SECONDS * 365,
       period: MONTH_SECONDS,
-      rate: "1000",
+      rate: "800",
+      fee: "200",
       defaultPeriod: MONTH_SECONDS,
-      defaultRate: "2000",
+      defaultRate: "1800",
     }
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
@@ -81,6 +82,8 @@ describe("Kettle", function () {
 
     const status = await kettle.lienStatus(lien);
     expect(status).to.equal(0);
+
+    console.log(await kettle.amountOwed(lien));
 
     const txn = await kettle.connect(borrower).interestPayment(
       lienId, 

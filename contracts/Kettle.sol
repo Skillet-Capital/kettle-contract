@@ -76,6 +76,7 @@ contract Kettle is IKettle {
             block.timestamp,
             offer.defaultPeriod,
             offer.defaultRate,
+            offer.fee,
             LienState({
                 lastPayment: block.timestamp,
                 amountOwed: amount
@@ -100,7 +101,8 @@ contract Kettle is IKettle {
             lien.tenor,
             lien.startTime,
             lien.defaultPeriod,
-            lien.defaultRate
+            lien.defaultRate,
+            lien.fee
         );
     }
 
@@ -156,6 +158,7 @@ contract Kettle is IKettle {
             lien.startTime,
             lien.defaultPeriod,
             lien.defaultRate,
+            lien.fee,
             LienState({
                 lastPayment: block.timestamp,
                 amountOwed: amountOwed - _amount

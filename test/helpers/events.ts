@@ -35,6 +35,7 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       startTime: lien.startTime,
       defaultPeriod: lien.defaultPeriod,
       defaultRate: lien.defaultRate,
+      fee: lien.fee,
       state: {
         lastPayment: lien.startTime,
         amountOwed: lien.principal

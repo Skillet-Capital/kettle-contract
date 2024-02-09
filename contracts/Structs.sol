@@ -26,6 +26,7 @@ struct Lien {
     uint256 startTime;
     uint256 defaultPeriod;
     uint256 defaultRate;
+    uint256 fee;
     LienState state;
 }
 
@@ -41,6 +42,7 @@ struct LoanOffer {
     uint256 tenor;
     uint256 period;
     uint256 rate;
+    uint256 fee;
     uint256 defaultPeriod;
     uint256 defaultRate;
 }

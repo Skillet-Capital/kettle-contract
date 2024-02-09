@@ -17,7 +17,8 @@ interface IKettle {
         uint256 tenor,
         uint256 startTime,
         uint256 defaultPeriod,
-        uint256 defaultRate
+        uint256 defaultRate,
+        uint256 fee
     );
 
     event Payment(
