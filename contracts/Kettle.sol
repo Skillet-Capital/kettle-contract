@@ -5,7 +5,7 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { LoanOffer, Lien, LienState, LienStatus } from "./Structs.sol";
-import { InvalidLien, LienDefaulted } from "./Errors.sol";
+import { InvalidLien, LienDefaulted, Unauthorized } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { Helpers } from "./Helpers.sol";
@@ -184,6 +184,95 @@ contract Kettle is IKettle {
         emit Payment(lienId, _amount, amountOwed - _amount);
     }
 
+    function refinance(
+        uint256 lienId,
+        uint256 amount,
+        Lien calldata lien,
+        LoanOffer calldata offer
+    ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien.borrower) returns (uint256 newLienId) {
+        
+        (uint256 amountOwed, uint256 feeInterest, uint256 lenderInterest) = Helpers.computeAmountOwed(lien);
+
+        newLienId = _refinance(lienId, amount, lien, offer);
+
+        if (amount > amountOwed) {
+            if (offer.lender != lien.lender) {
+                unchecked {
+                    IERC20(lien.currency).transferFrom(offer.lender, lien.lender, amountOwed - feeInterest);
+                }
+            }
+
+            IERC20(lien.currency).transferFrom(offer.lender, lien.recipient, feeInterest);
+            unchecked {
+                IERC20(lien.currency).transferFrom(offer.lender, lien.borrower, amount - amountOwed);
+            }
+        } else {
+            if (offer.lender != lien.lender) {
+                unchecked {
+                    IERC20(lien.currency).transferFrom(offer.lender, lien.lender, amount - (amountOwed - feeInterest));                    
+                }
+            }
+            unchecked {
+                IERC20(lien.currency).transferFrom(lien.borrower, lien.lender, amountOwed - feeInterest - amount);                
+            }
+
+            IERC20(lien.currency).transferFrom(lien.borrower, lien.recipient, feeInterest);
+        }
+    }
+
+    function _refinance(
+        uint256 lienId,
+        uint256 amount,
+        Lien calldata lien,
+        LoanOffer calldata offer
+    ) internal returns (uint256 newLienId) {
+        Lien memory lien = Lien(
+            offer.lender,
+            offer.recipient,
+            lien.borrower,
+            offer.currency,
+            offer.collection,
+            lien.tokenId,
+            offer.size,
+            amount,
+            offer.rate,
+            offer.period,
+            offer.tenor,
+            block.timestamp,
+            offer.defaultPeriod,
+            offer.defaultRate,
+            offer.fee,
+            LienState({
+                lastPayment: block.timestamp,
+                amountOwed: amount
+            })
+        );
+
+        delete liens[lienId];
+        unchecked {
+            liens[newLienId = _nextLienId++] = keccak256(abi.encode(lien));
+        }
+
+        emit Refinance(
+            lienId,
+            lien.lender,
+            lien.borrower,
+            lien.recipient,
+            lien.collection,
+            address(lien.currency),
+            lien.tokenId,
+            lien.size,
+            lien.principal,
+            lien.rate,
+            lien.period,
+            lien.tenor,
+            lien.startTime,
+            lien.defaultPeriod,
+            lien.defaultRate,
+            lien.fee
+        );
+    }
+
     function repay(
         uint256 lienId,
         Lien calldata lien
@@ -218,6 +307,14 @@ contract Kettle is IKettle {
         delete liens[lienId];
 
         emit Repay(lienId, amountOwed);
+    }
+
+    modifier onlyBorrower(address borrower) {
+        if (msg.sender != borrower) {
+            revert Unauthorized();
+        }
+
+        _;
     }
 
     modifier validateLien(Lien calldata lien, uint256 lienId) {
