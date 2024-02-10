@@ -57,7 +57,7 @@ export async function getFixture(): Promise<Fixture> {
   await testErc721.connect(borrower).setApprovalForAll(kettle, true);
 
   const principal = parseUnits("10000", 6);
-  await testErc20.mint(lender, principal);
+  await testErc20.mint(lender, principal * 2n);
   await testErc20.connect(lender).approve(kettle, MaxUint256.toString());
   await testErc20.connect(borrower).approve(kettle, MaxUint256.toString());
 

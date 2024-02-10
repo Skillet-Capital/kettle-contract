@@ -8,11 +8,12 @@ export async function getTimestamp(block: number) {
   return ethers.provider.getBlock(block).then((block) => block!.timestamp);
 }
 
-interface BorrowLog {
+interface LienLog {
   lien: LienStruct;
   lienId: string | number | bigint;
 }
-export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog {
+
+export function extractBorrowLog(receipt: ContractTransactionReceipt): LienLog {
   const KettleInterface = Kettle__factory.createInterface();
   const { topicHash } = KettleInterface.getEvent("Borrow");
 
@@ -70,5 +71,38 @@ export function extractRepayLog(receipt: ContractTransactionReceipt) {
   return {
     lienId: repay.lienId,
     amountOwed: repay.amountOwed,
+  }
+}
+
+export function extractRefinanceLog(receipt: ContractTransactionReceipt) {
+  const KettleInterface = Kettle__factory.createInterface();
+  const { topicHash } = KettleInterface.getEvent("Refinance");
+
+  const log = receipt!.logs.find((log) => log.topics[0] === topicHash);
+  const lien = KettleInterface.decodeEventLog("Refinance", log!.data, log!.topics);
+
+  return {
+    lienId: lien.lienId,
+    lien: {
+      lender: lien.lender,
+      borrower: lien.borrower,
+      recipient: lien.recipient,
+      currency: lien.currency,
+      collection: lien.collection,
+      tokenId: lien.tokenId,
+      size: lien.size,
+      principal: lien.principal,
+      rate: lien.rate,
+      period: lien.period,
+      tenor: lien.tenor,
+      startTime: lien.startTime,
+      defaultPeriod: lien.defaultPeriod,
+      defaultRate: lien.defaultRate,
+      fee: lien.fee,
+      state: {
+        lastPayment: lien.startTime,
+        amountOwed: lien.principal
+      }
+    }
   }
 }

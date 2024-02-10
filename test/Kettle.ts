@@ -8,7 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
-import { extractBorrowLog, extractPaymentLog, extractRepayLog } from './helpers/events';
+import { extractBorrowLog, extractPaymentLog, extractRefinanceLog, extractRepayLog } from './helpers/events';
 
 import {
   TestERC20,
@@ -187,4 +187,76 @@ describe("Kettle", function () {
     const repayLog = await txn.wait().then(receipt => extractRepayLog(receipt!));
     expect(repayLog.amountOwed).to.be.within(amountOwed, amountOwed + 9999n)
   });
+
+  it.only("should refinance lien with a higher amount", async () => {
+    const newAmount = principal * 3n / 2n;
+
+    const offer = {
+      lender: lender,
+      recipient: recipient,
+      currency: testErc20,
+      collection: testErc721,
+      identifier: tokenId,
+      size: 1,
+      totalAmount: newAmount,
+      maxAmount: newAmount,
+      minAmount: newAmount,
+      tenor: DAY_SECONDS * 365,
+      period: MONTH_SECONDS,
+      rate: "800",
+      fee: "200",
+      defaultPeriod: MONTH_SECONDS,
+      defaultRate: "1800",
+    }
+
+    const startingBalance = await testErc20.balanceOf(borrower);
+
+    const txn = await kettle.connect(borrower).refinance(
+      lienId,
+      newAmount,
+      lien,
+      offer
+    );
+
+    const endingBalance = await testErc20.balanceOf(borrower);
+    console.log({
+      startingBalance,
+      endingBalance
+    
+    })
+
+    const { lienId: newLienId, lien: newLien } = await txn.wait().then(receipt => extractRefinanceLog(receipt!));
+
+  });
+
+  it.only("should refinance lien with a lower amount", async () => {
+    const newAmount = principal / 2n;
+
+    const offer = {
+      lender: lender,
+      recipient: recipient,
+      currency: testErc20,
+      collection: testErc721,
+      identifier: tokenId,
+      size: 1,
+      totalAmount: newAmount,
+      maxAmount: newAmount,
+      minAmount: newAmount,
+      tenor: DAY_SECONDS * 365,
+      period: MONTH_SECONDS,
+      rate: "800",
+      fee: "200",
+      defaultPeriod: MONTH_SECONDS,
+      defaultRate: "1800",
+    }
+
+    const txn = await kettle.connect(borrower).refinance(
+      lienId,
+      newAmount,
+      lien,
+      offer
+    );
+
+    const { lienId: newLienId, lien: newLien } = await txn.wait().then(receipt => extractRefinanceLog(receipt!));
+  })
 });
