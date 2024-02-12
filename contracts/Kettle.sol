@@ -16,18 +16,26 @@ contract Kettle is IKettle {
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
-    function amountOwed(Lien memory lien) public view returns (uint256 amount) {
-        (amount,,) = Helpers.computeAmountOwed(lien);
+    function amountOwed(Lien memory lien) public view returns (
+        uint256 amount,
+        uint256 fee,
+        uint256 interest
+    ) {
+        (amount, fee, interest) = Helpers.computeAmountOwed(lien);
+    }
+
+    function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
+        date = lien.state.paidThrough + lien.period;
     }
 
     function lienStatus(Lien memory lien) public view returns (LienStatus) {
         if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
-        } else if (lien.state.lastPayment + lien.period + lien.defaultPeriod < block.timestamp) {
+        } else if (lien.state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
         } else if (lien.startTime + lien.tenor < block.timestamp) {
             return LienStatus.DELINQUENT;
-        } else if (lien.state.lastPayment + lien.period < block.timestamp) {
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
             return LienStatus.DELINQUENT;
         } else {
             return LienStatus.CURRENT;
@@ -75,12 +83,13 @@ contract Kettle is IKettle {
             offer.rate,
             offer.period,
             offer.tenor,
+            offer.model,
             block.timestamp,
             offer.defaultPeriod,
             offer.defaultRate,
             offer.fee,
             LienState({
-                lastPayment: block.timestamp,
+                paidThrough: block.timestamp,
                 amountOwed: amount
             })
         );
@@ -102,6 +111,7 @@ contract Kettle is IKettle {
             lien.rate,
             lien.period,
             lien.tenor,
+            lien.model,
             lien.startTime,
             lien.defaultPeriod,
             lien.defaultRate,
@@ -169,19 +179,20 @@ contract Kettle is IKettle {
             lien.rate,
             lien.period,
             lien.tenor,
+            lien.model,
             lien.startTime,
             lien.defaultPeriod,
             lien.defaultRate,
             lien.fee,
             LienState({
-                lastPayment: block.timestamp,
+                paidThrough: Helpers.computeLastPaymentTimestamp(lien),
                 amountOwed: amountOwed - _amount
             })
         );
 
         liens[lienId] = keccak256(abi.encode(newLien));
 
-        emit Payment(lienId, _amount, amountOwed - _amount);
+        emit Payment(lienId, _amount, amountOwed - _amount, newLien.state.paidThrough);
     }
 
     function repay(
@@ -246,6 +257,6 @@ contract Kettle is IKettle {
     function _lienIsDefaulted(
         Lien calldata lien
     ) internal view returns (bool) {
-        return (lien.state.lastPayment + lien.period + lien.defaultPeriod) < block.timestamp;
+        return (lien.state.paidThrough + lien.period + lien.defaultPeriod) < block.timestamp;
     }
 }

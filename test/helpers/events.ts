@@ -33,19 +33,26 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       rate: lien.rate,
       period: lien.period,
       tenor: lien.tenor,
+      model: lien.model,
       startTime: lien.startTime,
       defaultPeriod: lien.defaultPeriod,
       defaultRate: lien.defaultRate,
       fee: lien.fee,
       state: {
-        lastPayment: lien.startTime,
+        paidThrough: lien.startTime,
         amountOwed: lien.principal
       }
     }
   }
 }
 
-export async function extractPaymentLog(receipt: ContractTransactionReceipt) {
+interface PaymentLog {
+  lienId: string | number | bigint;
+  amount: bigint;
+  amountOwed: bigint;
+  paidThrough: bigint;
+}
+export async function extractPaymentLog(receipt: ContractTransactionReceipt): Promise<PaymentLog> {
   const KettleInterface = Kettle__factory.createInterface();
   const { topicHash } = KettleInterface.getEvent("Payment");
 
@@ -56,7 +63,7 @@ export async function extractPaymentLog(receipt: ContractTransactionReceipt) {
     lienId: payment.lienId,
     amount: payment.amount,
     amountOwed: payment.amountOwed,
-    timestamp: await getTimestamp(receipt!.blockNumber)
+    paidThrough: payment.paidThrough
   }
 }
 

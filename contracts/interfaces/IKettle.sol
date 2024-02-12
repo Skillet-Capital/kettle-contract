@@ -16,6 +16,7 @@ interface IKettle {
         uint256 rate,
         uint256 period,
         uint256 tenor,
+        uint8 model,
         uint256 startTime,
         uint256 defaultPeriod,
         uint256 defaultRate,
@@ -25,7 +26,8 @@ interface IKettle {
     event Payment(
         uint256 indexed lienId,
         uint256 amount,
-        uint256 amountOwed
+        uint256 amountOwed,
+        uint256 paidThrough
     );
 
     event Repay(
