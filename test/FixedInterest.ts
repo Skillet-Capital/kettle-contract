@@ -81,10 +81,13 @@ describe("Fixed Interest", function () {
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
   })
 
-  it("should make interest payment and be current until next payment", async () => {
+  it.only("should make interest payment and be current until next payment", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
-    const status = await kettle.lienStatus(lien);
+    console.log(lien);
+    console.log(await kettle.states(lienId));
+
+    const status = await kettle.lienStatus(lienId, lien);
     expect(status).to.equal(0);
 
     const txn = await kettle.connect(borrower).interestPayment(
@@ -92,19 +95,16 @@ describe("Fixed Interest", function () {
       lien
     );
 
+    console.log(await kettle.states(lienId));
+
     const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
     expect(paymentLog.amountOwed).to.be.within(lien.principal, BigInt(lien.principal) + 9n);
 
-    lien.state = {
-      paidThrough: paymentLog.paidThrough,
-      amountOwed: paymentLog.amountOwed
-    }
-
-    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
-    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
+    expect(await kettle.nextPaymentDate(lienId, lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
+    expect(await kettle.amountOwed(lienId, lien).then(({ amount }) => amount)).to.equal(lien.principal); 
   });
 
-  it.only("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
+  it("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const status = await kettle.lienStatus(lien);

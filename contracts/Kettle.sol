@@ -15,27 +15,41 @@ contract Kettle is IKettle {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
+    mapping(uint256 => LienState) public states;
 
-    function amountOwed(Lien memory lien) public view returns (
+    function amountOwed(
+        uint256 lienId,
+        Lien memory lien
+    ) public view returns (
         uint256 amount,
         uint256 fee,
         uint256 interest
     ) {
-        (amount, fee, interest) = Helpers.computeAmountOwed(lien);
+        LienState memory state = states[lienId];
+        (amount, fee, interest) = Helpers.computeAmountOwed(lien, state);
     }
 
-    function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
-        date = lien.state.paidThrough + lien.period;
+    function nextPaymentDate(
+        uint256 lienId,
+        Lien memory lien
+    ) public view returns (uint256 date) {
+        LienState memory state = states[lienId];
+        date = state.paidThrough + lien.period;
     }
 
-    function lienStatus(Lien memory lien) public view returns (LienStatus) {
+    function lienStatus(
+        uint256 lienId,
+        Lien memory lien
+    ) public view returns (LienStatus) {
+        LienState memory state = states[lienId];
+        
         if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
-        } else if (lien.state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
+        } else if (state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
             return LienStatus.DEFAULTED;
         } else if (lien.startTime + lien.tenor < block.timestamp) {
             return LienStatus.DELINQUENT;
-        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+        } else if (state.paidThrough + lien.period < block.timestamp) {
             return LienStatus.DELINQUENT;
         } else {
             return LienStatus.CURRENT;
@@ -87,16 +101,19 @@ contract Kettle is IKettle {
             block.timestamp,
             offer.defaultPeriod,
             offer.defaultRate,
-            offer.fee,
-            LienState({
-                paidThrough: block.timestamp,
-                amountOwed: amount
-            })
+            offer.fee
         );
+
+        LienState memory state = LienState({
+            paidThrough: block.timestamp,
+            amountOwed: amount
+        });
 
         unchecked {
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
+
+        states[lienId] = state;
 
         emit Borrow(
             lienId,
@@ -123,7 +140,7 @@ contract Kettle is IKettle {
         uint256 lienId,
         uint256 amount,
         Lien calldata lien
-    ) public validateLien(lien, lienId) lienIsCurrent(lien) {
+    ) public validateLien(lien, lienId) lienIsCurrent(lienId, lien) {
         (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, amount);
 
         // transfer amount from borrower to lender
@@ -136,7 +153,7 @@ contract Kettle is IKettle {
     function interestPayment(
         uint256 lienId,
         Lien calldata lien
-    ) public validateLien(lien, lienId) lienIsCurrent(lien) {
+    ) public validateLien(lien, lienId) lienIsCurrent(lienId, lien) {
         (uint256 feeInterest, uint256 lenderInterest, uint256 principal) = _payment(lien, lienId, 0);
 
         // transfer lender interest from borrower to lender
@@ -155,13 +172,15 @@ contract Kettle is IKettle {
         uint256 lenderInterest, 
         uint256 principal
     ) {
+        LienState memory state = states[lienId];
+
         uint256 amountOwed;
         (
             amountOwed, 
             feeInterest, 
             lenderInterest, 
             principal
-        ) = Helpers.interestPaymentBreakdown(lien, amount);
+        ) = Helpers.interestPaymentBreakdown(lien, state, amount);
 
         // calculate total amount paid
         uint256 _amount = feeInterest + lenderInterest + principal;
@@ -183,22 +202,24 @@ contract Kettle is IKettle {
             lien.startTime,
             lien.defaultPeriod,
             lien.defaultRate,
-            lien.fee,
-            LienState({
-                paidThrough: Helpers.computeLastPaymentTimestamp(lien),
-                amountOwed: amountOwed - _amount
-            })
+            lien.fee
         );
 
-        liens[lienId] = keccak256(abi.encode(newLien));
+        LienState memory newState = LienState({
+            paidThrough: Helpers.computePaidThrough(lien, state),
+            amountOwed: amountOwed - _amount
+        });
 
-        emit Payment(lienId, _amount, amountOwed - _amount, newLien.state.paidThrough);
+        liens[lienId] = keccak256(abi.encode(newLien));
+        states[lienId] = newState;
+
+        emit Payment(lienId, _amount, amountOwed - _amount, state.paidThrough);
     }
 
     function repay(
         uint256 lienId,
         Lien calldata lien
-    ) public validateLien(lien, lienId) lienIsCurrent(lien) {
+    ) public validateLien(lien, lienId) lienIsCurrent(lienId, lien) {
         (
             uint256 feeInterest, 
             uint256 lenderInterest, 
@@ -223,8 +244,10 @@ contract Kettle is IKettle {
         uint256 lenderInterest,
         uint256 principal
     ) {
+        LienState memory state = states[lienId];
+
         uint256 amountOwed;
-        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, 0);
+        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, state, 0);
 
         delete liens[lienId];
 
@@ -239,8 +262,8 @@ contract Kettle is IKettle {
         _;
     }
 
-    modifier lienIsCurrent(Lien calldata lien) {
-        if (_lienIsDefaulted(lien)) {
+    modifier lienIsCurrent(uint256 lienId, Lien calldata lien) {
+        if (_lienIsDefaulted(lienId, lien)) {
             revert LienDefaulted();
         }
 
@@ -255,8 +278,10 @@ contract Kettle is IKettle {
     }
 
     function _lienIsDefaulted(
+        uint256 lienId,
         Lien calldata lien
     ) internal view returns (bool) {
-        return (lien.state.paidThrough + lien.period + lien.defaultPeriod) < block.timestamp;
+        LienState memory state = states[lienId];
+        return (state.paidThrough + lien.period + lien.defaultPeriod) < block.timestamp;
     }
 }

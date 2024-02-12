@@ -3,7 +3,7 @@ pragma solidity 0.8.20;
 
 import "solmate/src/utils/SignedWadMath.sol";
 
-import { Lien, InterestModel } from "./Structs.sol";
+import { Lien, LienState, InterestModel } from "./Structs.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { CompoundInterest } from "./models/CompoundInterest.sol";
@@ -13,7 +13,11 @@ import "hardhat/console.sol";
 library Helpers {
     error InvalidModel();
 
-    function interestPaymentBreakdown(Lien memory lien, uint256 amount) 
+    function interestPaymentBreakdown(
+        Lien memory lien, 
+        LienState memory state, 
+        uint256 amount
+    ) 
         public 
         view 
         returns (
@@ -23,14 +27,17 @@ library Helpers {
             uint256 principal
         ) 
     {
-        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien);
+        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien, state);
 
         if (amount > feeInterest + lenderInterest) {
             principal = amount - feeInterest - lenderInterest;
         }
     }
 
-    function computeAmountOwed(Lien memory lien) 
+    function computeAmountOwed(
+        Lien memory lien,
+        LienState memory state
+    ) 
         public 
         view 
         returns (
@@ -40,19 +47,19 @@ library Helpers {
         ) 
     {
         if (lien.model == uint8(InterestModel.COMPOUND)) {
-            (amountOwed, feeInterest, lenderInterest) = CompoundInterest.computeAmountOwed(lien);
+            (amountOwed, feeInterest, lenderInterest) = CompoundInterest.computeAmountOwed(lien, state);
         } else if (lien.model == uint8(InterestModel.FIXED)) {
-            (amountOwed, feeInterest, lenderInterest) = FixedInterest.computeAmountOwed(lien);
+            (amountOwed, feeInterest, lenderInterest) = FixedInterest.computeAmountOwed(lien, state);
         } else {
             revert InvalidModel();
         }
     }
 
-    function computeLastPaymentTimestamp(Lien memory lien) public view returns (uint256) {
+    function computePaidThrough(Lien memory lien, LienState memory state) public view returns (uint256) {
         if (lien.model == uint8(InterestModel.COMPOUND)) {
             return block.timestamp;
         } else if (lien.model == uint8(InterestModel.FIXED)) {
-            return FixedInterest.computeLastPaymentTimestamp(lien);
+            return FixedInterest.computePaidThrough(lien, state);
         } else {
             revert InvalidModel();
         }

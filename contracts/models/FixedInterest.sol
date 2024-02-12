@@ -4,7 +4,7 @@ pragma solidity 0.8.20;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import "solmate/src/utils/SignedWadMath.sol";
 
-import { Lien } from "../Structs.sol";
+import { Lien, LienState } from "../Structs.sol";
 
 import "hardhat/console.sol";
 
@@ -13,7 +13,10 @@ library FixedInterest {
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    function computeAmountOwed(Lien memory lien)
+    function computeAmountOwed(
+        Lien memory lien,
+        LienState memory state
+    )
         public 
         view 
         returns (
@@ -23,60 +26,60 @@ library FixedInterest {
         ) 
     {   
         // if the loan is paid up to date, return no interest
-        if (block.timestamp < lien.state.paidThrough) {
-            return (lien.state.amountOwed, 0, 0);
+        if (block.timestamp < state.paidThrough) {
+            return (state.amountOwed, 0, 0);
         }
 
         bool inDefault = false;
-        if (block.timestamp > lien.state.paidThrough + lien.period) {
+        if (block.timestamp > state.paidThrough + lien.period) {
             inDefault = true;
         }
 
         uint256 amountWithoutFee;
         if (inDefault) {
             uint256 missedInterestWithoutFee = computeCurrentDebt(
-                lien.state.amountOwed, 
+                state.amountOwed, 
                 lien.defaultRate,
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            ) - lien.state.amountOwed;
+                state.paidThrough, 
+                state.paidThrough + lien.period
+            ) - state.amountOwed;
 
             amountWithoutFee = missedInterestWithoutFee + computeCurrentDebt(
-                lien.state.amountOwed, 
+                state.amountOwed, 
                 lien.rate, 
-                lien.state.paidThrough + lien.period, 
-                lien.state.paidThrough + lien.period * 2
+                state.paidThrough + lien.period, 
+                state.paidThrough + lien.period * 2
             );
 
             uint256 missedInterest = computeCurrentDebt(
-                lien.state.amountOwed,
+                state.amountOwed,
                 lien.defaultRate + lien.fee, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            ) - lien.state.amountOwed;
+                state.paidThrough, 
+                state.paidThrough + lien.period
+            ) - state.amountOwed;
 
             amountOwed = missedInterest + computeCurrentDebt(
-                lien.state.amountOwed,
+                state.amountOwed,
                 lien.rate + lien.fee, 
-                lien.state.paidThrough + lien.period, 
-                lien.state.paidThrough + lien.period * 2
+                state.paidThrough + lien.period, 
+                state.paidThrough + lien.period * 2
             );
         } else {
             amountWithoutFee = computeCurrentDebt(
-                lien.state.amountOwed, 
+                state.amountOwed, 
                 lien.rate, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
+                state.paidThrough, 
+                state.paidThrough + lien.period
             );
             amountOwed = computeCurrentDebt(
-                lien.state.amountOwed, 
+                state.amountOwed, 
                 lien.rate + lien.fee, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
+                state.paidThrough, 
+                state.paidThrough + lien.period
             );
         }
 
-        lenderInterest = amountWithoutFee - lien.state.amountOwed;
+        lenderInterest = amountWithoutFee - state.amountOwed;
         feeInterest = amountOwed - amountWithoutFee;
     }
 
@@ -98,20 +101,24 @@ library FixedInterest {
         return amount + uint256(wadMul(int256(amount), wadMul(yearsWad, bipsToSignedWads(rate))));
     }
 
+    function computePaidThrough(
+        Lien memory lien, 
+        LienState memory state
+    ) public view returns (uint256) 
+    {
+        if (block.timestamp > state.paidThrough + lien.period) {
+            return state.paidThrough + lien.period * 2;
+        }
+
+        uint256 paidThrough = state.paidThrough;
+        if (paidThrough > block.timestamp) return paidThrough;
+        return paidThrough + lien.period;
+    }
+
     /**
      * @dev Converts an integer bips value to a signed wad value.
      */
     function bipsToSignedWads(uint256 bips) public pure returns (int256) {
         return int256((bips * 1e18) / _BASIS_POINTS);
-    }
-
-    function computeLastPaymentTimestamp(Lien memory lien) public view returns (uint256) {
-        if (block.timestamp > lien.state.paidThrough + lien.period) {
-            return lien.state.paidThrough + lien.period * 2;
-        }
-
-        uint256 paidThrough = lien.state.paidThrough;
-        if (paidThrough > block.timestamp) return paidThrough;
-        return paidThrough + lien.period;
     }
 }

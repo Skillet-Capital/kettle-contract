@@ -3,14 +3,14 @@ pragma solidity 0.8.20;
 
 import "solmate/src/utils/SignedWadMath.sol";
 
-import { Lien } from "../Structs.sol";
+import { Lien, LienState } from "../Structs.sol";
 
 library CompoundInterest {
     int256 private constant _YEAR_WAD = 365 days * 1e18;
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    function computeAmountOwed(Lien memory lien)
+    function computeAmountOwed(Lien memory lien, LienState memory state)
         public 
         view 
         returns (
@@ -20,9 +20,9 @@ library CompoundInterest {
         ) 
     {
         uint256 amountWithFee = computeCurrentDebt(
-            lien.state.amountOwed, 
+            state.amountOwed, 
             lien.fee,
-            lien.state.paidThrough, 
+            state.paidThrough, 
             block.timestamp
         );
 
@@ -31,7 +31,7 @@ library CompoundInterest {
             uint256 periodAmount = computeCurrentDebt(
                 amountWithFee, 
                 lien.rate, 
-                lien.state.paidThrough, 
+                state.paidThrough, 
                 lien.startTime + lien.tenor
             );
             amountOwed = computeCurrentDebt(
@@ -42,17 +42,17 @@ library CompoundInterest {
             );
         }
 
-        else if (block.timestamp > lien.state.paidThrough + lien.period) {
+        else if (block.timestamp > state.paidThrough + lien.period) {
             uint256 periodAmount = computeCurrentDebt(
                 amountWithFee, 
                 lien.rate, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
+                state.paidThrough, 
+                state.paidThrough + lien.period
             );
             amountOwed = computeCurrentDebt(
                 periodAmount, 
                 lien.defaultRate, 
-                lien.state.paidThrough + lien.period, 
+                state.paidThrough + lien.period, 
                 block.timestamp
             );
         }
@@ -62,7 +62,7 @@ library CompoundInterest {
             amountOwed = computeCurrentDebt(
                 amountWithFee, 
                 lien.rate, 
-                lien.state.paidThrough, 
+                state.paidThrough, 
                 block.timestamp
             );
         }
