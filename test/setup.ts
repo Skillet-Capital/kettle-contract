@@ -6,7 +6,7 @@ import {
   TestERC20,
   TestERC721,
   Kettle,
-  Helpers,
+  Model,
   Transfer
 } from "../typechain-types";
 
@@ -17,7 +17,7 @@ export interface Fixture {
   recipient: Signer,
   signers: Signer[],
   kettle: Kettle,
-  helpers: Helpers,
+  model: Model,
   transfer: Transfer,
   testErc20: TestERC20,
   testErc721: TestERC721,
@@ -39,11 +39,11 @@ export async function getFixture(): Promise<Fixture> {
   const proRatedFixedInterest = await proRatedFixedModel.deploy();
 
   /* Deploy Helpers */
-  const helpers = await ethers.deployContract("Helpers", {
+  const model = await ethers.deployContract("Model", {
     libraries: { FixedInterest: fixedInterest.target, CompoundInterest: compoundInterest.target, ProRatedFixedInterest: proRatedFixedInterest.target },
     gasLimit: 1e8
   });
-  await helpers.waitForDeployment();
+  await model.waitForDeployment();
 
   /* Deploy Collateral Verifier */
   const transfer = await ethers.deployContract("Transfer");
@@ -51,7 +51,7 @@ export async function getFixture(): Promise<Fixture> {
 
   /* Deploy Kettle */
   const kettle = await ethers.deployContract("Kettle", { 
-    libraries: { Helpers: helpers.target, Transfer: transfer.target },
+    libraries: { Model: model.target, Transfer: transfer.target },
     gasLimit: 1e8 
   });
   await kettle.waitForDeployment();
@@ -81,7 +81,7 @@ export async function getFixture(): Promise<Fixture> {
     recipient,
     signers,
     kettle,
-    helpers,
+    model,
     transfer,
     testErc20,
     testErc721,
