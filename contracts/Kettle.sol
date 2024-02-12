@@ -4,7 +4,7 @@ pragma solidity 0.8.20;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { LoanOffer, Lien, LienState, LienStatus } from "./Structs.sol";
+import { LoanOffer, Lien, LienState, LienStatus, InterestModel } from "./Structs.sol";
 import { InvalidLien, LienDefaulted } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
@@ -18,10 +18,12 @@ contract Kettle is IKettle {
 
     function amountOwed(Lien memory lien) public view returns (
         uint256 amount,
+        uint256 accrued,
         uint256 fee,
         uint256 interest
     ) {
-        (amount, fee, interest) = Helpers.computeAmountOwed(lien);
+        (amount, fee, interest) = Helpers.computeAmountOwed(lien, false);
+        (accrued,,) = Helpers.computeAmountOwed(lien, true);
     }
 
     function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
@@ -161,7 +163,7 @@ contract Kettle is IKettle {
             feeInterest, 
             lenderInterest, 
             principal
-        ) = Helpers.interestPaymentBreakdown(lien, amount);
+        ) = Helpers.interestPaymentBreakdown(lien, amount, false);
 
         // calculate total amount paid
         uint256 _amount = feeInterest + lenderInterest + principal;
@@ -223,8 +225,10 @@ contract Kettle is IKettle {
         uint256 lenderInterest,
         uint256 principal
     ) {
+        bool proRated = lien.model == uint8(InterestModel.PRO_RATED_FIXED);
+
         uint256 amountOwed;
-        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, 0);
+        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, 0, proRated);
 
         delete liens[lienId];
 

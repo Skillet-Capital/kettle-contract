@@ -20,7 +20,7 @@ import { LienStruct } from "../typechain-types/contracts/Kettle";
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 
-describe("Fixed Interest", function () {
+describe("Pro Rated Fixed Interest", function () {
 
   let owner: Signer;
   let borrower: Signer;
@@ -72,20 +72,20 @@ describe("Fixed Interest", function () {
       period: MONTH_SECONDS,
       rate: "1000",
       fee: "200",
-      model: 0,
+      model: 2,
       defaultPeriod: MONTH_SECONDS,
       defaultRate: "2200",
     }
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
-  })
+  });
 
-  it("amount owed should equal accrued", async () => {
+  it("accrued interest should only be half of the amount owed", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const [amount, accrued,,] = await kettle.amountOwed(lien);
-    expect(amount).to.equal(accrued);
+    expect(accrued - BigInt(lien.principal)).to.equal((amount - BigInt(lien.principal)) / 2n);
   });
 
   it("should make interest payment and be current until next payment", async () => {
@@ -139,6 +139,7 @@ describe("Fixed Interest", function () {
       lienId, 
       lien
     );
+    
     const paymentLog2 = await txn.wait().then(receipt => extractPaymentLog(receipt!));
     expect(paymentLog2.paidThrough).to.equal(paymentLog1.paidThrough);
 
@@ -147,7 +148,8 @@ describe("Fixed Interest", function () {
       amountOwed: paymentLog2.amountOwed
     }
 
-    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal);
+    expect(await kettle.amountOwed(lien).then(({ accrued }) => accrued)).to.equal(lien.principal); 
 
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) * 3n / 2n);
     await kettle.amountOwed(lien).then(({ amount }) => amount).then(
@@ -219,7 +221,7 @@ describe("Fixed Interest", function () {
   it('should repay lien before tenor', async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) / 2n));
 
-    const [amountOwed,,] = await kettle.amountOwed(lien);
+    const [amountOwed, accrued,] = await kettle.amountOwed(lien);
     await testErc20.mint(borrower, amountOwed);
 
     const txn = await kettle.connect(borrower).repay(
@@ -228,12 +230,12 @@ describe("Fixed Interest", function () {
     );
 
     const repayLog = await txn.wait().then(receipt => extractRepayLog(receipt!));
-    expect(repayLog.amountOwed).to.be.within(amountOwed, amountOwed + 9999n)
+    expect(repayLog.amountOwed).to.be.within(accrued, accrued + 9999n)
   });
 
-  it.skip('should repay lien after tenor', async () => {
+  it('should repay lien after tenor', async () => {
     for (let i = 0; i < 11; i++) {
-      await time.increase(BigInt(lien.period));
+      await time.increase(BigInt(lien.period) / 2n);
       const txn = await kettle.connect(borrower).interestPayment(
         lienId, 
         lien
@@ -244,12 +246,15 @@ describe("Fixed Interest", function () {
         paidThrough: paymentLog.paidThrough,
         amountOwed: paymentLog.amountOwed
       }
+
+      await time.increaseTo(paymentLog.paidThrough);
     }
 
     await time.increase(BigInt(lien.period) * 3n / 2n);
-    expect(await time.latest()).to.be.above(BigInt(lien.startTime) + BigInt(lien.tenor))
+    expect(await time.latest()).to.be.above(BigInt(lien.startTime) + BigInt(lien.tenor));
+    expect(await kettle.lienStatus(lien)).to.equal(1);
 
-    const [amountOwed,,] = await kettle.amountOwed(lien);
+    const [amountOwed, accrued,,] = await kettle.amountOwed(lien);
     await testErc20.mint(borrower, amountOwed);
 
     const state = await kettle.lienStatus(lien);
@@ -261,7 +266,6 @@ describe("Fixed Interest", function () {
     );
 
     const repayLog = await txn.wait().then(receipt => extractRepayLog(receipt!));
-    console.log(repayLog)
-    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
+    expect(repayLog.amountOwed).to.be.within(accrued, accrued + 9999n)
   });
 });

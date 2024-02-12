@@ -9,7 +9,8 @@ enum LienStatus {
 
 enum InterestModel {
     FIXED,
-    COMPOUND
+    COMPOUND,
+    PRO_RATED_FIXED
 }
 
 struct LienState {
