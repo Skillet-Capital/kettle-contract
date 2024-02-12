@@ -20,7 +20,7 @@ import { LienStruct } from "../typechain-types/contracts/Kettle";
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 
-describe.skip("Compound Interest", function () {
+describe("Compound Interest", function () {
 
   let owner: Signer;
   let borrower: Signer;

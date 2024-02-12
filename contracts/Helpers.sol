@@ -7,13 +7,14 @@ import { Lien, InterestModel } from "./Structs.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { CompoundInterest } from "./models/CompoundInterest.sol";
+import { ProRatedFixedInterest } from "./models/ProRatedFixedInterest.sol";
 
 import "hardhat/console.sol";
 
 library Helpers {
     error InvalidModel();
 
-    function interestPaymentBreakdown(Lien memory lien, uint256 amount) 
+    function interestPaymentBreakdown(Lien memory lien, uint256 amount, bool proRata) 
         public 
         view 
         returns (
@@ -23,14 +24,14 @@ library Helpers {
             uint256 principal
         ) 
     {
-        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien);
+        (amountOwed, feeInterest, lenderInterest) = computeAmountOwed(lien, proRata);
 
         if (amount > feeInterest + lenderInterest) {
             principal = amount - feeInterest - lenderInterest;
         }
     }
 
-    function computeAmountOwed(Lien memory lien) 
+    function computeAmountOwed(Lien memory lien, bool proRata) 
         public 
         view 
         returns (
@@ -43,6 +44,8 @@ library Helpers {
             (amountOwed, feeInterest, lenderInterest) = CompoundInterest.computeAmountOwed(lien);
         } else if (lien.model == uint8(InterestModel.FIXED)) {
             (amountOwed, feeInterest, lenderInterest) = FixedInterest.computeAmountOwed(lien);
+        } else if (lien.model == uint8(InterestModel.PRO_RATED_FIXED)) {
+            (amountOwed, feeInterest, lenderInterest) = ProRatedFixedInterest.computeAmountOwed(lien, proRata);
         } else {
             revert InvalidModel();
         }
@@ -53,9 +56,10 @@ library Helpers {
             return block.timestamp;
         } else if (lien.model == uint8(InterestModel.FIXED)) {
             return FixedInterest.computeLastPaymentTimestamp(lien);
+        } else if (lien.model == uint8(InterestModel.PRO_RATED_FIXED)) {
+            return ProRatedFixedInterest.computeLastPaymentTimestamp(lien);
         } else {
             revert InvalidModel();
         }
-
     }
 }

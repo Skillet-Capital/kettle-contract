@@ -35,9 +35,12 @@ export async function getFixture(): Promise<Fixture> {
   const compoundModel = await ethers.getContractFactory("CompoundInterest");
   const compoundInterest = await compoundModel.deploy();
 
+  const proRatedFixedModel = await ethers.getContractFactory("ProRatedFixedInterest");
+  const proRatedFixedInterest = await proRatedFixedModel.deploy();
+
   /* Deploy Helpers */
   const helpers = await ethers.deployContract("Helpers", {
-    libraries: { FixedInterest: fixedInterest.target, CompoundInterest: compoundInterest.target },
+    libraries: { FixedInterest: fixedInterest.target, CompoundInterest: compoundInterest.target, ProRatedFixedInterest: proRatedFixedInterest.target },
     gasLimit: 1e8
   });
   await helpers.waitForDeployment();
