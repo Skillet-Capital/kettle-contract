@@ -7,8 +7,13 @@ enum LienStatus {
     DEFAULTED
 }
 
+enum InterestModel {
+    FIXED,
+    COMPOUND
+}
+
 struct LienState {
-    uint256 lastPayment;
+    uint256 paidThrough;
     uint256 amountOwed;
 }
 
@@ -24,6 +29,7 @@ struct Lien {
     uint256 rate;
     uint256 period;
     uint256 tenor;
+    uint8 model;
     uint256 startTime;
     uint256 defaultPeriod;
     uint256 defaultRate;
@@ -45,6 +51,7 @@ struct LoanOffer {
     uint256 period;
     uint256 rate;
     uint256 fee;
+    uint8 model;
     uint256 defaultPeriod;
     uint256 defaultRate;
 }

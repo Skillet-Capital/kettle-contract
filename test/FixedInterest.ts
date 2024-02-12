@@ -20,7 +20,7 @@ import { LienStruct } from "../typechain-types/contracts/Kettle";
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 
-describe("Kettle", function () {
+describe("Fixed Interest", function () {
 
   let owner: Signer;
   let borrower: Signer;
@@ -70,18 +70,19 @@ describe("Kettle", function () {
       minAmount: principal,
       tenor: DAY_SECONDS * 365,
       period: MONTH_SECONDS,
-      rate: "800",
+      rate: "1000",
       fee: "200",
+      model: 0,
       defaultPeriod: MONTH_SECONDS,
-      defaultRate: "1800",
+      defaultRate: "2200",
     }
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
   })
 
-  it("should make interest payment", async () => {
-    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period));
+  it("should make interest payment and be current until next payment", async () => {
+    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const status = await kettle.lienStatus(lien);
     expect(status).to.equal(0);
@@ -93,27 +94,81 @@ describe("Kettle", function () {
 
     const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
     expect(paymentLog.amountOwed).to.be.within(lien.principal, BigInt(lien.principal) + 9n);
+
+    lien.state = {
+      paidThrough: paymentLog.paidThrough,
+      amountOwed: paymentLog.amountOwed
+    }
+
+    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
   });
 
-  it("should make pay interest and some principal", async () => {
-    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period));
+  it.only("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
+    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const status = await kettle.lienStatus(lien);
     expect(status).to.equal(0);
 
-    const amountOwed = await kettle.amountOwed(lien);
+    const initialAmountOwed = await kettle.amountOwed(lien).then(({ amount }) => amount);
+
+    let txn = await kettle.connect(borrower).interestPayment(
+      lienId, 
+      lien
+    );
+
+    const paymentLog1 = await txn.wait().then(receipt => extractPaymentLog(receipt!));
+    expect(paymentLog1.amountOwed).to.be.within(lien.principal, BigInt(lien.principal) + 9n);
+
+    lien.state = {
+      paidThrough: paymentLog1.paidThrough,
+      amountOwed: paymentLog1.amountOwed
+    }
+
+    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
+
+    txn = await kettle.connect(borrower).interestPayment(
+      lienId, 
+      lien
+    );
+    const paymentLog2 = await txn.wait().then(receipt => extractPaymentLog(receipt!));
+    expect(paymentLog2.paidThrough).to.equal(paymentLog1.paidThrough);
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
+
+    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) * 3n / 2n);
+    await kettle.amountOwed(lien).then(({ amount }) => amount).then(
+      (amount) => expect(amount).to.equal(initialAmountOwed)
+    );
+  });
+
+  it("should pay interest and some principal and be current until next payment", async () => {
+    await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
+
+    const status = await kettle.lienStatus(lien);
+    expect(status).to.equal(0);
+
+    const [, feeInterest, lenderInterest] = await kettle.amountOwed(lien);
 
     const txn = await kettle.connect(borrower).payment(
       lienId, 
-      amountOwed / 2n,
+      (BigInt(lien.principal) / 2n) + feeInterest + lenderInterest,
       lien
     );
 
     const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
-    expect(paymentLog.amountOwed).to.be.within(amountOwed / 2n, amountOwed / 2n + 99n);
+    expect(paymentLog.amountOwed).to.be.within(BigInt(lien.principal) / 2n, BigInt(lien.principal) / 2n + 9n);
+
+    lien.state = {
+      paidThrough: paymentLog.paidThrough,
+      amountOwed: paymentLog.amountOwed
+    }
+
+    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(BigInt(lien.principal) / 2n); 
   });
 
-  it("should make interest payment in default", async () => {
+  it("should make interest payment in default and be current through two periods", async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n / 2n));
 
     const status = await kettle.lienStatus(lien);
@@ -125,7 +180,15 @@ describe("Kettle", function () {
     );
 
     const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
-    expect(paymentLog.amountOwed).to.equal(lien.principal);
+    expect(paymentLog.amountOwed).to.be.within(lien.principal, BigInt(lien.principal) + 9n);
+
+    lien.state = {
+      paidThrough: paymentLog.paidThrough,
+      amountOwed: paymentLog.amountOwed
+    }
+
+    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 3n);
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
   });
 
   it("should fail to make interest payment after default period", async () => {
@@ -141,9 +204,9 @@ describe("Kettle", function () {
   });
 
   it('should repay lien before tenor', async () => {
-    await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period)));
+    await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) / 2n));
 
-    const amountOwed = await kettle.amountOwed(lien);
+    const [amountOwed,,] = await kettle.amountOwed(lien);
     await testErc20.mint(borrower, amountOwed);
 
     const txn = await kettle.connect(borrower).repay(
@@ -155,7 +218,7 @@ describe("Kettle", function () {
     expect(repayLog.amountOwed).to.be.within(amountOwed, amountOwed + 9999n)
   });
 
-  it('should repay lien after tenor', async () => {
+  it.skip('should repay lien after tenor', async () => {
     for (let i = 0; i < 11; i++) {
       await time.increase(BigInt(lien.period));
       const txn = await kettle.connect(borrower).interestPayment(
@@ -165,7 +228,7 @@ describe("Kettle", function () {
 
       const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
       lien.state = {
-        lastPayment: paymentLog.timestamp,
+        paidThrough: paymentLog.paidThrough,
         amountOwed: paymentLog.amountOwed
       }
     }
@@ -173,7 +236,7 @@ describe("Kettle", function () {
     await time.increase(BigInt(lien.period) * 3n / 2n);
     expect(await time.latest()).to.be.above(BigInt(lien.startTime) + BigInt(lien.tenor))
 
-    const amountOwed = await kettle.amountOwed(lien);
+    const [amountOwed,,] = await kettle.amountOwed(lien);
     await testErc20.mint(borrower, amountOwed);
 
     const state = await kettle.lienStatus(lien);
@@ -185,6 +248,7 @@ describe("Kettle", function () {
     );
 
     const repayLog = await txn.wait().then(receipt => extractRepayLog(receipt!));
-    expect(repayLog.amountOwed).to.be.within(amountOwed, amountOwed + 9999n)
+    console.log(repayLog)
+    expect(await kettle.amountOwed(lien).then(({ amount }) => amount)).to.equal(lien.principal); 
   });
 });

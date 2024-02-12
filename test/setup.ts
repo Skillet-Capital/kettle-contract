@@ -28,8 +28,18 @@ export interface Fixture {
 export async function getFixture(): Promise<Fixture> {
   const [owner, borrower, lender, recipient, ...signers] = await ethers.getSigners();
 
+  /* Deploy Models */
+  const fixedModel = await ethers.getContractFactory("FixedInterest");
+  const fixedInterest = await fixedModel.deploy();
+
+  const compoundModel = await ethers.getContractFactory("CompoundInterest");
+  const compoundInterest = await compoundModel.deploy();
+
   /* Deploy Helpers */
-  const helpers = await ethers.deployContract("Helpers");
+  const helpers = await ethers.deployContract("Helpers", {
+    libraries: { FixedInterest: fixedInterest.target, CompoundInterest: compoundInterest.target },
+    gasLimit: 1e8
+  });
   await helpers.waitForDeployment();
 
   /* Deploy Collateral Verifier */
