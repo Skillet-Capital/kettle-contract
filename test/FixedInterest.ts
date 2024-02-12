@@ -187,6 +187,8 @@ describe("Fixed Interest", function () {
     const status = await kettle.lienStatus(lien);
     expect(status).to.equal(1);
 
+    expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) + BigInt(lien.defaultPeriod));
+
     const txn = await kettle.connect(borrower).interestPayment(
       lienId, 
       lien

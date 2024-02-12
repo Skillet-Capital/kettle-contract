@@ -125,7 +125,7 @@ library ProRatedFixedInterest {
         return int256((bips * 1e18) / _BASIS_POINTS);
     }
 
-    function computeLastPaymentTimestamp(Lien memory lien) public view returns (uint256) {
+    function computePaidThrough(Lien memory lien) public view returns (uint256) {
         if (block.timestamp > lien.state.paidThrough + lien.period) {
             return lien.state.paidThrough + lien.period * 2;
         }

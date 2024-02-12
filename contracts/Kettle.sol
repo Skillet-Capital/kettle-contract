@@ -8,7 +8,7 @@ import { LoanOffer, Lien, LienState, LienStatus, InterestModel } from "./Structs
 import { InvalidLien, LienDefaulted } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
-import { Helpers } from "./Helpers.sol";
+import { Model } from "./Model.sol";
 import { Transfer } from "./Transfer.sol";
 
 contract Kettle is IKettle {
@@ -22,26 +22,16 @@ contract Kettle is IKettle {
         uint256 fee,
         uint256 interest
     ) {
-        (amount, fee, interest) = Helpers.computeAmountOwed(lien, false);
-        (accrued,,) = Helpers.computeAmountOwed(lien, true);
+        (amount, fee, interest) = Model.computeAmountOwed(lien, false);
+        (accrued,,) = Model.computeAmountOwed(lien, true);
     }
 
     function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
-        date = lien.state.paidThrough + lien.period;
+        return Model.computeNextPaymentDate(lien);
     }
 
-    function lienStatus(Lien memory lien) public view returns (LienStatus) {
-        if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
-            return LienStatus.DEFAULTED;
-        } else if (lien.state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
-            return LienStatus.DEFAULTED;
-        } else if (lien.startTime + lien.tenor < block.timestamp) {
-            return LienStatus.DELINQUENT;
-        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
-            return LienStatus.DELINQUENT;
-        } else {
-            return LienStatus.CURRENT;
-        }
+    function lienStatus(Lien memory lien) public view returns (uint8) {
+        return Model.computeLienStatus(lien);
     }
 
     /*//////////////////////////////////////////////////
@@ -163,7 +153,7 @@ contract Kettle is IKettle {
             feeInterest, 
             lenderInterest, 
             principal
-        ) = Helpers.interestPaymentBreakdown(lien, amount, false);
+        ) = Model.interestPaymentBreakdown(lien, amount, false);
 
         // calculate total amount paid
         uint256 _amount = feeInterest + lenderInterest + principal;
@@ -187,7 +177,7 @@ contract Kettle is IKettle {
             lien.defaultRate,
             lien.fee,
             LienState({
-                paidThrough: Helpers.computeLastPaymentTimestamp(lien),
+                paidThrough: Model.computePaidThrough(lien),
                 amountOwed: amountOwed - _amount
             })
         );
@@ -228,7 +218,7 @@ contract Kettle is IKettle {
         bool proRated = lien.model == uint8(InterestModel.PRO_RATED_FIXED);
 
         uint256 amountOwed;
-        (amountOwed, feeInterest, lenderInterest, principal) = Helpers.interestPaymentBreakdown(lien, 0, proRated);
+        (amountOwed, feeInterest, lenderInterest, principal) = Model.interestPaymentBreakdown(lien, 0, proRated);
 
         delete liens[lienId];
 

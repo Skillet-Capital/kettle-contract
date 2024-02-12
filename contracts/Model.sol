@@ -3,7 +3,7 @@ pragma solidity 0.8.20;
 
 import "solmate/src/utils/SignedWadMath.sol";
 
-import { Lien, InterestModel } from "./Structs.sol";
+import { Lien, InterestModel, LienStatus } from "./Structs.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { CompoundInterest } from "./models/CompoundInterest.sol";
@@ -11,7 +11,7 @@ import { ProRatedFixedInterest } from "./models/ProRatedFixedInterest.sol";
 
 import "hardhat/console.sol";
 
-library Helpers {
+library Model {
     error InvalidModel();
 
     function interestPaymentBreakdown(Lien memory lien, uint256 amount, bool proRata) 
@@ -51,15 +51,43 @@ library Helpers {
         }
     }
 
-    function computeLastPaymentTimestamp(Lien memory lien) public view returns (uint256) {
+    function computePaidThrough(Lien memory lien) public view returns (uint256) {
         if (lien.model == uint8(InterestModel.COMPOUND)) {
             return block.timestamp;
         } else if (lien.model == uint8(InterestModel.FIXED)) {
-            return FixedInterest.computeLastPaymentTimestamp(lien);
+            return FixedInterest.computePaidThrough(lien);
         } else if (lien.model == uint8(InterestModel.PRO_RATED_FIXED)) {
-            return ProRatedFixedInterest.computeLastPaymentTimestamp(lien);
+            return ProRatedFixedInterest.computePaidThrough(lien);
         } else {
             revert InvalidModel();
+        }
+    }
+
+    function computeNextPaymentDate(Lien memory lien) public view returns (uint256) {
+        if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
+            return lien.startTime + lien.tenor + lien.defaultPeriod;
+        } else if (lien.state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
+            return lien.state.paidThrough + lien.period + lien.defaultPeriod;
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return lien.startTime + lien.tenor + lien.defaultPeriod;
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+            return lien.state.paidThrough + lien.period + lien.defaultPeriod;
+        } else {
+            return lien.state.paidThrough + lien.period;
+        }
+    }
+
+    function computeLienStatus(Lien memory lien) public view returns (uint8) {
+        if (lien.startTime + lien.tenor + lien.defaultPeriod < block.timestamp) {
+            return uint8(LienStatus.DEFAULTED);
+        } else if (lien.state.paidThrough + lien.period + lien.defaultPeriod < block.timestamp) {
+            return uint8(LienStatus.DEFAULTED);
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return uint8(LienStatus.DELINQUENT);
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+            return uint8(LienStatus.DELINQUENT);
+        } else {
+            return uint8(LienStatus.CURRENT);
         }
     }
 }
