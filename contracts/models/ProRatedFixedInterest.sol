@@ -35,7 +35,7 @@ library ProRatedFixedInterest {
         uint256 endPeriod;
         if (inDefault) {
             if (proRata) {
-                endPeriod = Math.min(block.timestamp, lien.state.paidThrough + (lien.period * 2));
+                endPeriod = Math.min(block.timestamp, lien.state.paidThrough + lien.period * 2);
             } else {
                 endPeriod = lien.state.paidThrough + lien.period * 2;
             }
@@ -94,11 +94,6 @@ library ProRatedFixedInterest {
         lenderInterest = amountWithoutFee - lien.state.amountOwed;
         feeInterest = amountOwed - amountWithoutFee;
     }
-
-    // function computeProRatedPeriod(uint256 paidThrough, uint256 period) public view returns (uint256) {
-
-        
-    // }
 
     /**
      * @dev Computes the current debt of a borrow given the last time it was touched and the last computed debt.
