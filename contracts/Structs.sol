@@ -18,6 +18,15 @@ struct LienState {
     uint256 amountOwed;
 }
 
+struct LienTerms {
+    uint256 principal;
+    uint256 rate;
+    uint256 fee;
+    uint256 period;
+    uint256 gracePeriod;
+    uint256 tenor;
+}
+
 struct Lien {
     address lender;
     address recipient;
@@ -28,13 +37,11 @@ struct Lien {
     uint256 size;
     uint256 principal;
     uint256 rate;
-    uint256 period;
-    uint256 tenor;
-    uint8 model;
-    uint256 startTime;
-    uint256 defaultPeriod;
-    uint256 defaultRate;
     uint256 fee;
+    uint256 period;
+    uint256 gracePeriod;
+    uint256 tenor;
+    uint256 startTime;
     LienState state;
 }
 
@@ -48,11 +55,9 @@ struct LoanOffer {
     uint256 totalAmount;
     uint256 maxAmount;
     uint256 minAmount;
-    uint256 tenor;
-    uint256 period;
     uint256 rate;
     uint256 fee;
-    uint8 model;
-    uint256 defaultPeriod;
-    uint256 defaultRate;
+    uint256 period;
+    uint256 gracePeriod;
+    uint256 tenor;
 }

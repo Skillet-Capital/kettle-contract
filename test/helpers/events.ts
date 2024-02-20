@@ -33,11 +33,9 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       rate: lien.rate,
       period: lien.period,
       tenor: lien.tenor,
-      model: lien.model,
       startTime: lien.startTime,
-      defaultPeriod: lien.defaultPeriod,
-      defaultRate: lien.defaultRate,
       fee: lien.fee,
+      gracePeriod: lien.gracePeriod,
       state: {
         paidThrough: lien.startTime,
         amountOwed: lien.principal
@@ -61,7 +59,11 @@ export async function extractPaymentLog(receipt: ContractTransactionReceipt): Pr
 
   return {
     lienId: payment.lienId,
-    amount: payment.amount,
+    pastInterest: payment.pastInterest,
+    pastFee: payment.pastFee,
+    currentInterest: payment.currentInterest,
+    currentFee: payment.currentFee,
+    principal: payment.principal,
     amountOwed: payment.amountOwed,
     paidThrough: payment.paidThrough
   }
@@ -76,6 +78,11 @@ export function extractRepayLog(receipt: ContractTransactionReceipt) {
 
   return {
     lienId: repay.lienId,
-    amountOwed: repay.amountOwed,
+    pastInterest: repay.pastInterest,
+    pastFee: repay.pastFee,
+    currentInterest: repay.currentInterest,
+    currentFee: repay.currentFee,
+    principal: repay.principal,
+    amountOwed: repay.amountOwed
   }
 }

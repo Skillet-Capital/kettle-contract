@@ -5,9 +5,7 @@ import { MaxUint256 } from "@ethersproject/constants";
 import {
   TestERC20,
   TestERC721,
-  Kettle,
-  Model,
-  Transfer
+  Kettle
 } from "../typechain-types";
 
 export interface Fixture {
@@ -17,8 +15,6 @@ export interface Fixture {
   recipient: Signer,
   signers: Signer[],
   kettle: Kettle,
-  model: Model,
-  transfer: Transfer,
   testErc20: TestERC20,
   testErc721: TestERC721,
   tokenId: number,
@@ -32,26 +28,13 @@ export async function getFixture(): Promise<Fixture> {
   const fixedModel = await ethers.getContractFactory("FixedInterest");
   const fixedInterest = await fixedModel.deploy();
 
-  const compoundModel = await ethers.getContractFactory("CompoundInterest");
-  const compoundInterest = await compoundModel.deploy();
-
-  const proRatedFixedModel = await ethers.getContractFactory("ProRatedFixedInterest");
-  const proRatedFixedInterest = await proRatedFixedModel.deploy();
-
-  /* Deploy Helpers */
-  const model = await ethers.deployContract("Model", {
-    libraries: { FixedInterest: fixedInterest.target, CompoundInterest: compoundInterest.target, ProRatedFixedInterest: proRatedFixedInterest.target },
-    gasLimit: 1e8
-  });
-  await model.waitForDeployment();
-
   /* Deploy Collateral Verifier */
   const transfer = await ethers.deployContract("Transfer");
   await transfer.waitForDeployment();
 
   /* Deploy Kettle */
   const kettle = await ethers.deployContract("Kettle", { 
-    libraries: { Model: model.target, Transfer: transfer.target },
+    libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target },
     gasLimit: 1e8 
   });
   await kettle.waitForDeployment();
@@ -81,8 +64,6 @@ export async function getFixture(): Promise<Fixture> {
     recipient,
     signers,
     kettle,
-    model,
-    transfer,
     testErc20,
     testErc721,
     tokenId,

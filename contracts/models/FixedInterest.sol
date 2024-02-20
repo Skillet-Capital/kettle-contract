@@ -4,7 +4,7 @@ pragma solidity 0.8.20;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import "solmate/src/utils/SignedWadMath.sol";
 
-import { Lien } from "../Structs.sol";
+import { Lien, LienStatus } from "../Structs.sol";
 
 import "hardhat/console.sol";
 
@@ -18,13 +18,15 @@ library FixedInterest {
         view 
         returns (
             uint256 amountOwed,
-            uint256 feeInterest,
-            uint256 lenderInterest
+            uint256 pastInterest,
+            uint256 pastFee,
+            uint256 currentInterest,
+            uint256 currentFee
         ) 
     {   
         // if the loan is paid up to date, return no interest
         if (block.timestamp < lien.state.paidThrough) {
-            return (lien.state.amountOwed, 0, 0);
+            return (lien.state.amountOwed, 0, 0, 0, 0);
         }
 
         bool inDefault = false;
@@ -32,69 +34,58 @@ library FixedInterest {
             inDefault = true;
         }
 
-        uint256 amountWithoutFee;
-        if (inDefault) {
-            uint256 missedInterestWithoutFee = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.defaultRate,
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            ) - lien.state.amountOwed;
-
-            amountWithoutFee = missedInterestWithoutFee + computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate, 
-                lien.state.paidThrough + lien.period, 
-                lien.state.paidThrough + lien.period * 2
-            );
-
-            uint256 missedInterest = computeCurrentDebt(
-                lien.state.amountOwed,
-                lien.defaultRate + lien.fee, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            ) - lien.state.amountOwed;
-
-            amountOwed = missedInterest + computeCurrentDebt(
-                lien.state.amountOwed,
-                lien.rate + lien.fee, 
-                lien.state.paidThrough + lien.period, 
-                lien.state.paidThrough + lien.period * 2
-            );
-        } else {
-            amountWithoutFee = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            );
-            amountOwed = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate + lien.fee, 
-                lien.state.paidThrough, 
-                lien.state.paidThrough + lien.period
-            );
+        bool pastTenor = false;
+        if (block.timestamp > lien.startTime + lien.tenor) {
+            pastTenor = true;
         }
 
-        lenderInterest = amountWithoutFee - lien.state.amountOwed;
-        feeInterest = amountOwed - amountWithoutFee;
+        if (inDefault) {
+            pastInterest = computeCurrentDebt(
+                lien.state.amountOwed, 
+                lien.rate, 
+                lien.period
+            ) - lien.state.amountOwed;
+
+            pastFee = computeCurrentDebt(
+                lien.state.amountOwed, 
+                lien.fee,
+                lien.period
+            ) - lien.state.amountOwed;
+        }
+
+        if (!pastTenor) {
+            currentInterest = computeCurrentDebt(
+                lien.state.amountOwed, 
+                lien.rate, 
+                lien.period
+            ) - lien.state.amountOwed;
+
+            currentFee = computeCurrentDebt(
+                lien.state.amountOwed, 
+                lien.fee, 
+                lien.period
+            ) - lien.state.amountOwed;
+        }
+
+        if (inDefault) {
+            amountOwed = lien.state.amountOwed + pastInterest + pastFee + currentInterest + currentFee;
+        } else {
+            amountOwed = lien.state.amountOwed + currentInterest + currentFee;
+        }
     }
 
     /**
      * @dev Computes the current debt of a borrow given the last time it was touched and the last computed debt.
      * @param amount Principal in ETH
-     * @param startTime Start time of the loan
      * @param rate Interest rate (in bips)
-     * @dev Formula: https://www.desmos.com/calculator/l6omp0rwnh
+     * @param period Period in seconds
      */
     function computeCurrentDebt(
         uint256 amount,
         uint256 rate,
-        uint256 startTime,
-        uint256 endTime
+        uint256 period
     ) public view returns (uint256) {
-        uint256 loanTime = endTime - startTime;
-        int256 yearsWad = wadDiv(int256(loanTime) * 1e18, _YEAR_WAD);
+        int256 yearsWad = wadDiv(int256(period) * 1e18, _YEAR_WAD);
         return amount + uint256(wadMul(int256(amount), wadMul(yearsWad, bipsToSignedWads(rate))));
     }
 
@@ -105,13 +96,55 @@ library FixedInterest {
         return int256((bips * 1e18) / _BASIS_POINTS);
     }
 
-    function computePaidThrough(Lien memory lien) public view returns (uint256) {
+    function computePaidThrough(Lien memory lien, bool cureOnly) public view returns (uint256) {
         if (block.timestamp > lien.state.paidThrough + lien.period) {
-            return lien.state.paidThrough + lien.period * 2;
+            if (cureOnly) {
+                return lien.state.paidThrough + lien.period;
+            } else {
+                return lien.state.paidThrough + (lien.period * 2);
+            }
         }
 
         uint256 paidThrough = lien.state.paidThrough;
         if (paidThrough > block.timestamp) return paidThrough;
         return paidThrough + lien.period;
+    }
+
+    function computeDelinquentPaymentDate(Lien memory lien) public view returns (uint256) {
+        if (lien.startTime + lien.tenor < block.timestamp) {
+            return lien.startTime + lien.tenor + lien.gracePeriod;
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+            return lien.state.paidThrough + lien.period + lien.gracePeriod;
+        } else {
+            return lien.state.paidThrough + lien.period;
+        }
+    }
+
+    function computeNextPaymentDate(Lien memory lien) public view returns (uint256) {
+        if (lien.startTime + lien.tenor + lien.gracePeriod < block.timestamp) {
+            return lien.startTime + lien.tenor + lien.gracePeriod;
+        } else if (lien.state.paidThrough + lien.period + lien.gracePeriod < block.timestamp) {
+            return lien.state.paidThrough + lien.period + lien.gracePeriod;
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return lien.startTime + lien.tenor + lien.gracePeriod;
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+            return lien.state.paidThrough + lien.period + lien.gracePeriod;
+        } else {
+            return lien.state.paidThrough + lien.period;
+        }
+    }
+
+    function computeLienStatus(Lien memory lien) public view returns (uint8) {
+        if (lien.startTime + lien.tenor + lien.gracePeriod < block.timestamp) {
+            return uint8(LienStatus.DEFAULTED);
+        } else if (lien.state.paidThrough + lien.period + lien.gracePeriod < block.timestamp) {
+            return uint8(LienStatus.DEFAULTED);
+        } else if (lien.startTime + lien.tenor < block.timestamp) {
+            return uint8(LienStatus.DELINQUENT);
+        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
+            return uint8(LienStatus.DELINQUENT);
+        } else {
+            return uint8(LienStatus.CURRENT);
+        }
     }
 }
