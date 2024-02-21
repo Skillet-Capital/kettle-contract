@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, InterestModel, RefinanceTranche } from "./Structs.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, RefinanceTranche } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
