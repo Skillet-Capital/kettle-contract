@@ -53,4 +53,9 @@ interface IKettle {
         uint256 amountOwed,
         uint256 amount
     );
+
+    event Claim(
+        uint256 indexed lienId,
+        address indexed lender
+    );
 }
