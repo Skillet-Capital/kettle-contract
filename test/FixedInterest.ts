@@ -80,10 +80,11 @@ describe("Fixed Interest", function () {
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
   })
 
-  it.only("should make interest payment and be current until next payment", async () => {
+  it("should make interest payment and be current until next payment", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(HALF_MONTH_SECONDS));
 
-    await kettle.lienState(lien).then((state) => expect(state).to.equal(0));
+    const status = await kettle.lienStatus(lien);
+    expect(status).to.equal(0);
 
     const txn = await kettle.connect(borrower).interestPayment(
       lienId, 
@@ -108,18 +109,17 @@ describe("Fixed Interest", function () {
     }
 
     expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
-    expect(await kettle.amountOwed(lien).then(({ amountOwed }) => amountOwed)).to.equal(lien.principal); 
-
     expect(await kettle.amountOwed(lien)).to.deep.equal([
+      lien.principal,
       lien.principal,
       0n,
       0n,
       0n,
       0n
-    ])
+    ]);
   });
 
-  it.only("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
+  it("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const status = await kettle.lienStatus(lien);
@@ -152,6 +152,7 @@ describe("Fixed Interest", function () {
     expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       lien.principal,
+      lien.principal,
       0n,
       0n,
       0n,
@@ -183,6 +184,7 @@ describe("Fixed Interest", function () {
     expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       lien.principal,
+      lien.principal,
       0n,
       0n,
       0n,
@@ -196,7 +198,7 @@ describe("Fixed Interest", function () {
     );
   });
 
-  it.only("should pay interest and some principal and be current until next payment", async () => {
+  it("should pay interest and some principal and be current until next payment", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) / 2n);
 
     const status = await kettle.lienStatus(lien);
@@ -228,6 +230,7 @@ describe("Fixed Interest", function () {
     expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 2n);
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       BigInt(lien.principal) / 2n,
+      BigInt(lien.principal) / 2n,
       0n,
       0n,
       0n,
@@ -238,6 +241,7 @@ describe("Fixed Interest", function () {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(MONTH_SECONDS) + BigInt(HALF_MONTH_SECONDS));
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       (BigInt(lien.principal) + 83333333n + 16666666n) / 2n,
+      BigInt(lien.principal) / 2n,
       0n,
       0n,
       83333333n / 2n,
@@ -245,7 +249,7 @@ describe("Fixed Interest", function () {
     ]);
   });
 
-  it.only("should make cure payment in default and be current through one period", async () => {
+  it("should make cure payment in default and be current through one period", async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n / 2n));
 
     const status = await kettle.lienStatus(lien);
@@ -254,6 +258,7 @@ describe("Fixed Interest", function () {
     const { currentInterest, currentFee } = await kettle.amountOwed(lien);
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       BigInt(lien.principal) + (currentInterest + currentFee) * 2n,
+      BigInt(lien.principal),
       83333333n,
       16666666n,
       83333333n,
@@ -288,7 +293,7 @@ describe("Fixed Interest", function () {
     expect(await kettle.amountOwed(lien).then(({ amountOwed }) => amountOwed)).to.equal(BigInt(lien.principal) + currentInterest + currentFee); 
   });
 
-  it.only("should make interest payment in default and be current through two periods", async () => {
+  it("should make interest payment in default and be current through two periods", async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n / 2n));
 
     const status = await kettle.lienStatus(lien);
@@ -321,6 +326,7 @@ describe("Fixed Interest", function () {
     expect(await kettle.nextPaymentDate(lien)).to.equal(BigInt(lien.startTime) + BigInt(lien.period) * 3n);
     expect(await kettle.amountOwed(lien)).to.deep.equal([
       lien.principal,
+      lien.principal,
       0n,
       0n,
       0n,
@@ -328,7 +334,7 @@ describe("Fixed Interest", function () {
     ]);
   });
 
-  it.only("should fail to make interest payment after default period", async () => {
+  it("should fail to make interest payment after default period and lender should claim", async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n));
 
     const status = await kettle.lienStatus(lien);
@@ -338,9 +344,13 @@ describe("Fixed Interest", function () {
       lienId, 
       lien
     )).to.be.revertedWithCustomError(kettle, "LienDefaulted");
+
+    await kettle.claim(lienId, lien);
+
+    expect(await testErc721.ownerOf(tokenId)).to.equal(await lender.getAddress());
   });
 
-  it.only("should fail to cure payment after default period", async () => {
+  it("should fail to cure payment after default period", async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n));
 
     const status = await kettle.lienStatus(lien);
@@ -352,7 +362,7 @@ describe("Fixed Interest", function () {
     )).to.be.revertedWithCustomError(kettle, "LienDefaulted");
   });
 
-  it.only('should repay lien before tenor', async () => {
+  it('should repay lien before tenor', async () => {
     await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) / 2n));
 
     const { amountOwed } = await kettle.amountOwed(lien);
@@ -375,7 +385,7 @@ describe("Fixed Interest", function () {
     });
   });
 
-  it.only('should repay lien after tenor', async () => {
+  it('should repay lien after tenor', async () => {
     for (let i = 0; i < 11; i++) {
       await time.increase(BigInt(HALF_MONTH_SECONDS));
       const txn = await kettle.connect(borrower).interestPayment(

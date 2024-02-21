@@ -5,7 +5,7 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import { LoanOffer, Lien, LienState, LienStatus, InterestModel, RefinanceTranche } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, Unauthorized } from "./Errors.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
@@ -459,6 +459,22 @@ contract Kettle is IKettle {
             lien.state.amountOwed,
             amountOwed
         );
+    }
+
+    function claim(
+        uint256 lienId,
+        Lien calldata lien
+    ) public validateLien(lien, lienId) {
+        if (!_lienIsDefaulted(lien)) {
+            revert LienIsCurrent();
+        }
+
+        delete liens[lienId];
+
+        // transfer collateral back to lender
+        Transfer.transferToken(lien.collection, address(this), lien.lender, lien.tokenId, lien.size);
+
+        emit Claim(lienId, lien.lender);
     }
 
     modifier validateLien(Lien calldata lien, uint256 lienId) {

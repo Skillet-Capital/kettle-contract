@@ -135,7 +135,7 @@ describe("Fixed Interest", function () {
       }
     });
 
-    it.only("amount > amountOwed", async () => {
+    it("amount > amountOwed", async () => {
       const { principal, currentInterest, currentFee } = await kettle.amountOwed(lien);
       const refinanceAmount = principal * 2n;
 
@@ -155,9 +155,9 @@ describe("Fixed Interest", function () {
         })
       );
 
-      console.log(refinanceLog);
-      console.log(newLienId);
-      console.log(newLien);
+      // console.log(refinanceLog);
+      // console.log(newLienId);
+      // console.log(newLien);
 
       expect(await testErc20.balanceOf(borrower)).to.be.within(
         borrowerBalanceBefore + refinanceAmount - principal - currentInterest - currentFee - 1n, 
@@ -253,7 +253,7 @@ describe("Fixed Interest", function () {
       await time.increaseTo(BigInt(lien.startTime) + BigInt(lien.period) * 3n / 2n);
     });
 
-    it.only("amount > amountOwed", async () => {
+    it("amount > amountOwed", async () => {
       const { principal, pastInterest, pastFee, currentInterest, currentFee } = await kettle.amountOwed(lien);
       const refinanceAmount = principal * 2n;
 
@@ -273,9 +273,9 @@ describe("Fixed Interest", function () {
         })
       );
 
-      console.log(refinanceLog);
-      console.log(newLienId);
-      console.log(newLien);
+      // console.log(refinanceLog);
+      // console.log(newLienId);
+      // console.log(newLien);
 
       expect(await testErc20.balanceOf(borrower)).to.be.within(
         borrowerBalanceBefore + refinanceAmount - principal - currentInterest - currentFee - pastInterest - pastFee - 1n, 
