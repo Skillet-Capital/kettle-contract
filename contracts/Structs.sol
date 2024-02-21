@@ -62,6 +62,21 @@ struct LoanOffer {
     uint256 tenor;
 }
 
+struct BorrowOffer {
+    address borrower;
+    address recipient;
+    address currency;
+    address collection;
+    uint256 tokenId;
+    uint256 size;
+    uint256 amount;
+    uint256 rate;
+    uint256 fee;
+    uint256 period;
+    uint256 gracePeriod;
+    uint256 tenor;
+}
+
 struct RefinanceTranche {
     uint256 amount;
     address recipient;
