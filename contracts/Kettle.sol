@@ -4,12 +4,13 @@ pragma solidity 0.8.20;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { LoanOffer, Lien, LienState, LienStatus, InterestModel } from "./Structs.sol";
-import { InvalidLien, LienDefaulted } from "./Errors.sol";
+import { LoanOffer, Lien, LienState, LienStatus, InterestModel, RefinanceTranche } from "./Structs.sol";
+import { InvalidLien, LienDefaulted, Unauthorized } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { Transfer } from "./Transfer.sol";
+import { Helpers } from "./Helpers.sol";
 
 import "hardhat/console.sol";
 
@@ -18,12 +19,9 @@ contract Kettle is IKettle {
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
-    // ----------------------------------------
-    // owner of token mapping to lender address
-    // ----------------------------------------
-
     function amountOwed(Lien memory lien) public view returns (
         uint256 amountOwed,
+        uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
@@ -36,6 +34,8 @@ contract Kettle is IKettle {
             currentInterest,
             currentFee
         ) = FixedInterest.computeAmountOwed(lien);
+
+        principal = lien.state.amountOwed;
     }
 
     function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
@@ -236,6 +236,176 @@ contract Kettle is IKettle {
             principal, 
             newLien.state.amountOwed,
             newLien.state.paidThrough
+        );
+    }
+
+    function refinance(
+        uint256 oldLienId,
+        uint256 amount,
+        Lien calldata lien,
+        LoanOffer calldata offer,
+        bytes32[] calldata proof
+    ) public validateLien(lien, oldLienId) lienIsCurrent(lien) returns (uint256 newLienId) {
+        if (msg.sender != lien.borrower) {
+            revert Unauthorized();
+        }
+
+        newLienId = _refinance(oldLienId, amount, lien, offer);
+
+        _distributePayments(oldLienId, newLienId, amount, lien, offer);
+    }
+
+    function _refinance(
+        uint256 oldLienId,
+        uint256 amount,
+        Lien calldata lien,
+        LoanOffer calldata offer
+    ) internal returns (uint256 newLienId) {
+        delete liens[oldLienId];
+
+        Lien memory newLien = Lien(
+            offer.lender,
+            offer.recipient,
+            msg.sender,
+            offer.currency,
+            offer.collection,
+            lien.tokenId,
+            offer.size,
+            amount,
+            offer.rate,
+            offer.fee,
+            offer.period,
+            offer.gracePeriod,
+            offer.tenor,
+            block.timestamp,
+            LienState({
+                paidThrough: block.timestamp,
+                amountOwed: amount
+            })
+        );
+
+        unchecked {
+            liens[newLienId = _nextLienId++] = keccak256(abi.encode(newLien));
+        }
+
+        emit Borrow(
+            newLienId,
+            newLien.lender,
+            newLien.borrower,
+            newLien.recipient,
+            newLien.collection,
+            newLien.currency,
+            newLien.tokenId,
+            newLien.size,
+            newLien.principal,
+            newLien.rate,
+            newLien.fee,
+            newLien.period,
+            newLien.gracePeriod,
+            newLien.tenor,
+            newLien.startTime
+        );
+    }
+
+    function _distributePayments(
+        uint256 oldLienId,
+        uint256 newLienId,
+        uint256 amount,
+        Lien calldata lien,
+        LoanOffer calldata offer
+    ) internal {
+        (
+            uint256 amountOwed,
+            uint256 pastInterest, 
+            uint256 pastFee, 
+            uint256 currentInterest, 
+            uint256 currentFee
+        ) = FixedInterest.computeAmountOwed(lien);
+
+        uint256 principal = lien.state.amountOwed;
+        uint256 interest = pastInterest + currentInterest;
+        uint256 fee = pastFee + currentFee;
+
+        if (amount < amountOwed) {
+
+            RefinanceTranche[3] memory tranches = Helpers.createTranches(
+                principal, 
+                lien.lender,
+                pastInterest + currentInterest, 
+                lien.lender, 
+                pastFee + currentFee, 
+                lien.recipient
+            );
+
+            // +-----------------------------------------------------------+
+            // |                                              amount       |
+            // |-------------------------|-----------------|----↓----------|
+            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
+            // +-----------------------------------------------------------+
+
+            if (amount > tranches[0].amount + tranches[1].amount) {
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[0].recipient, tranches[0].amount);
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[1].recipient, tranches[1].amount);
+
+                uint256 lenderTranchePayment = amount - (tranches[0].amount + tranches[1].amount);
+                uint256 borrowerTranchePayment = tranches[2].amount - lenderTranchePayment;
+
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[2].recipient, lenderTranchePayment);
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[2].recipient, borrowerTranchePayment);
+            }
+
+            // +-----------------------------------------------------------+
+            // |                             amount                        |
+            // |-------------------------|-----↓-----------|---------------|
+            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
+            // +-----------------------------------------------------------+
+
+            else if (amount > tranches[0].amount) {
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[0].recipient, tranches[0].amount);
+
+                uint256 lenderTranchePayment = amount - tranches[0].amount;
+                uint256 borrowerTranchePayment = tranches[1].amount - lenderTranchePayment;
+
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[1].recipient, lenderTranchePayment);
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[1].recipient, borrowerTranchePayment);
+
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[2].recipient, tranches[2].amount);
+            }
+
+            // +-----------------------------------------------------------+
+            // |       amount                                              |
+            // |---------↓---------------|-----------------|---------------|
+            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
+            // +-----------------------------------------------------------+
+
+            else {
+                uint256 lenderTranchePayment = amount;
+                uint256 borrowerTranchePayment = tranches[0].amount - lenderTranchePayment;
+
+                Transfer.transferCurrency(lien.currency, offer.lender, tranches[0].recipient, lenderTranchePayment);
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[0].recipient, borrowerTranchePayment);
+
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[1].recipient, tranches[1].amount);
+                Transfer.transferCurrency(lien.currency, msg.sender, tranches[2].recipient, tranches[2].amount);
+            }
+
+        } else {
+            uint256 netPrincipalReceived = amount - amountOwed;
+            Transfer.transferCurrency(lien.currency, offer.lender, msg.sender, netPrincipalReceived);
+            Transfer.transferCurrency(lien.currency, offer.lender, lien.lender, interest + principal);
+            Transfer.transferCurrency(lien.currency, offer.lender, lien.recipient, fee);
+        }
+
+        emit Refinance(
+            oldLienId,
+            newLienId,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
+            principal,
+            amountOwed,
+            amount
         );
     }
 

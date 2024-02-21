@@ -61,3 +61,8 @@ struct LoanOffer {
     uint256 gracePeriod;
     uint256 tenor;
 }
+
+struct RefinanceTranche {
+    uint256 amount;
+    address recipient;
+}

@@ -3,3 +3,4 @@ pragma solidity 0.8.20;
 
 error InvalidLien();
 error LienDefaulted();
+error Unauthorized();
