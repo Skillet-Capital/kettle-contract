@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { LoanOffer, Lien, LienState, LienStatus, InterestModel, RefinanceTranche } from "./Structs.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, InterestModel, RefinanceTranche } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
@@ -73,7 +73,7 @@ contract Kettle is IKettle {
         uint256 amount,
         uint256 tokenId,
         address borrower
-    ) public returns (uint256 lienId) {
+    ) internal returns (uint256 lienId) {
 
         Lien memory lien = Lien(
             offer.lender,
@@ -118,6 +118,66 @@ contract Kettle is IKettle {
             lien.startTime
         );
     }
+
+    function loan(
+        BorrowOffer calldata offer,
+        bytes32[] calldata proof
+    ) public returns (uint256 lienId) {
+        lienId = _loan(offer);
+
+        // lock collateral
+        Transfer.transferToken(offer.collection, offer.borrower, address(this), offer.tokenId, offer.size);
+
+        // transfer loan to borrower
+        IERC20(offer.currency).transferFrom(msg.sender, offer.borrower, offer.amount);
+    }
+
+    function _loan(
+        BorrowOffer calldata offer
+    ) internal returns (uint256 lienId) {
+        Lien memory lien = Lien(
+            msg.sender,
+            offer.recipient,
+            offer.borrower,
+            offer.currency,
+            offer.collection,
+            offer.tokenId,
+            offer.size,
+            offer.amount,
+            offer.rate,
+            offer.fee,
+            offer.period,
+            offer.gracePeriod,
+            offer.tenor,
+            block.timestamp,
+            LienState({
+                paidThrough: block.timestamp,
+                amountOwed: offer.amount
+            })
+        );
+
+        unchecked {
+            liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
+        }
+
+        emit Borrow(
+            lienId,
+            lien.lender,
+            lien.borrower,
+            lien.recipient,
+            lien.collection,
+            lien.currency,
+            lien.tokenId,
+            lien.size,
+            lien.principal,
+            lien.rate,
+            lien.fee,
+            lien.period,
+            lien.gracePeriod,
+            lien.tenor,
+            lien.startTime
+        );
+    } 
 
     function principalPayment(
         uint256 lienId,
