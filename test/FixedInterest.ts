@@ -83,8 +83,7 @@ describe("Fixed Interest", function () {
   it.only("should make interest payment and be current until next payment", async () => {
     await time.increaseTo(BigInt(lien.startTime) + BigInt(HALF_MONTH_SECONDS));
 
-    const status = await kettle.lienStatus(lien);
-    expect(status).to.equal(0);
+    await kettle.lienState(lien).then((state) => expect(state).to.equal(0));
 
     const txn = await kettle.connect(borrower).interestPayment(
       lienId, 

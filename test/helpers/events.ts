@@ -86,3 +86,23 @@ export function extractRepayLog(receipt: ContractTransactionReceipt) {
     amountOwed: repay.amountOwed
   }
 }
+
+export function extractRefinanceLog(receipt: ContractTransactionReceipt) {
+  const KettleInterface = Kettle__factory.createInterface();
+  const { topicHash } = KettleInterface.getEvent("Refinance");
+
+  const log = receipt!.logs.find((log) => log.topics[0] === topicHash);
+  const repay = KettleInterface.decodeEventLog("Refinance", log!.data, log!.topics);
+
+  return {
+    oldLienId: repay.oldLienId,
+    newLienId: repay.newLienId,
+    pastInterest: repay.pastInterest,
+    pastFee: repay.pastFee,
+    currentInterest: repay.currentInterest,
+    currentFee: repay.currentFee,
+    principal: repay.principal,
+    amountOwed: repay.amountOwed,
+    amount: repay.amount
+  }
+}
