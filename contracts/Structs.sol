@@ -7,24 +7,9 @@ enum LienStatus {
     DEFAULTED
 }
 
-enum InterestModel {
-    FIXED,
-    COMPOUND,
-    PRO_RATED_FIXED
-}
-
 struct LienState {
     uint256 paidThrough;
     uint256 amountOwed;
-}
-
-struct LienTerms {
-    uint256 principal;
-    uint256 rate;
-    uint256 fee;
-    uint256 period;
-    uint256 gracePeriod;
-    uint256 tenor;
 }
 
 struct Lien {
