@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: Unlicense
-pragma solidity 0.8.20;
+pragma solidity >=0.8.7;
 
 import { ERC721 } from "solmate/src/tokens/ERC721.sol";
 

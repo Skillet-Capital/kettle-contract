@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Skillet Group - LLC
-pragma solidity 0.8.20;
+pragma solidity ^0.8.19;
 
 import { RefinanceTranche } from "./Structs.sol";
 
