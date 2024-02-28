@@ -62,7 +62,7 @@ struct BorrowOffer {
     uint256 tenor;
 }
 
-enum Side { Buy, Sell }
+enum Side { BID, ASK }
 
 struct MarketOffer {
     Side side;

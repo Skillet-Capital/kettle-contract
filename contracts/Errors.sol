@@ -10,6 +10,7 @@ error OnlyBorrower();
 error OfferNotAsk();
 error OfferNotBid();
 
+error BidRequiresLoan();
 error BidNotWithLoan();
 error BidCannotBorrow();
 error MakerIsNotBorrower();
