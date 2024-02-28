@@ -4,6 +4,8 @@ import 'hardhat-ignore-warnings';
 import "hardhat-gas-reporter";
 import "hardhat-tracer";
 
+import "@openzeppelin/hardhat-upgrades";
+
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
@@ -29,7 +31,7 @@ const config: HardhatUserConfig = {
     hardhat: {
       allowUnlimitedContractSize: true,
       chainId: 1,
-      gas: 2100000,
+      gas: 1e9,
       blockGasLimit: 0x1fffffffffffff,
     },
   },
