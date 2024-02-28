@@ -75,8 +75,3 @@ struct MarketOffer {
     bool withLoan;
     uint256 borrowAmount;
 }
-
-struct RefinanceTranche {
-    uint256 amount;
-    address recipient;
-}

@@ -27,8 +27,8 @@ export async function getFixture(): Promise<Fixture> {
   const [owner, borrower, lender, lender2, recipient, offerMaker, ...signers] = await ethers.getSigners();
 
   /* Deploy Helpers */
-  const helpers = await ethers.getContractFactory("Helpers");
-  const helper = await helpers.deploy();
+  const Distributions = await ethers.getContractFactory("Distributions");
+  const distributions = await Distributions.deploy();
 
   /* Deploy Models */
   const fixedModel = await ethers.getContractFactory("FixedInterest");
@@ -40,7 +40,7 @@ export async function getFixture(): Promise<Fixture> {
 
   /* Deploy Kettle */
   await upgrades.silenceWarnings();
-  const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Helpers: helper.target } });
+  const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
   const kettle = await upgrades.deployProxy(Kettle, [], { 
     initializer: 'initialize',
     unsafeAllow: ['external-library-linking'],

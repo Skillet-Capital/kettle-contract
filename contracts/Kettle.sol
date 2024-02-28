@@ -6,13 +6,13 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, RefinanceTranche, MarketOffer, Side } from "./Structs.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { Transfer } from "./Transfer.sol";
-import { Helpers } from "./Helpers.sol";
+import { Distributions } from "./Distributions.sol";
 
 import "hardhat/console.sol";
 
@@ -65,11 +65,8 @@ contract Kettle is IKettle, Initializable {
 
         lienId = _borrow(offer, amount, tokenId, borrower);
 
-        // lock collateral
         Transfer.transferToken(offer.collection, msg.sender, address(this), tokenId, offer.size);
-
-        // transfer loan to borrower
-        IERC20(offer.currency).transferFrom(offer.lender, borrower, amount);
+        Transfer.transferCurrency(offer.currency, offer.lender, borrower, amount);
     }
 
     function _borrow(
@@ -129,16 +126,14 @@ contract Kettle is IKettle, Initializable {
     ) public returns (uint256 lienId) {
         lienId = _loan(offer);
 
-        // lock collateral
         Transfer.transferToken(offer.collection, offer.borrower, address(this), offer.tokenId, offer.size);
-
-        // transfer loan to borrower
-        IERC20(offer.currency).transferFrom(msg.sender, offer.borrower, offer.amount);
+        Transfer.transferCurrency(offer.currency, msg.sender, offer.borrower, offer.amount);
     }
 
     function _loan(
         BorrowOffer calldata offer
     ) internal returns (uint256 lienId) {
+
         Lien memory lien = Lien(
             msg.sender,
             offer.recipient,
@@ -181,7 +176,7 @@ contract Kettle is IKettle, Initializable {
             lien.tenor,
             lien.startTime
         );
-    } 
+    }
 
     function principalPayment(
         uint256 lienId,
@@ -196,11 +191,8 @@ contract Kettle is IKettle, Initializable {
             uint256 principal
         ) = _payment(lien, lienId, _principal, false);
 
-        // transfer amount from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, pastInterest + currentInterest + principal);
-
-        // transfer fee interest from borrower to fee receiver
-        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, pastFee + currentFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest + principal);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     function interestPayment(
@@ -214,11 +206,8 @@ contract Kettle is IKettle, Initializable {
             uint256 currentFee,
         ) = _payment(lien, lienId, 0, false);
 
-        // transfer lender interest from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, pastInterest + currentInterest);
-
-        // transfer fee interest from borrower to fee receiver
-        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, pastFee + currentFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     function curePayment(
@@ -231,11 +220,8 @@ contract Kettle is IKettle, Initializable {
             ,,
         ) = _payment(lien, lienId, 0, true);
 
-        // transfer lender interest from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, pastInterest);
-
-        // transfer fee interest from borrower to fee receiver
-        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, pastFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
     function _payment(
@@ -315,85 +301,44 @@ contract Kettle is IKettle, Initializable {
       onlyBorrower(lien )
       returns (uint256 newLienId) 
     {
-        newLienId = _refinance(oldLienId, amount, lien, offer);
+        newLienId = _borrow(offer, amount, lien.tokenId, msg.sender);
 
         (
             uint256 amountOwed,
-            uint256 principal,
-            uint256 pastInterest,
-            uint256 pastFee,
-            uint256 currentInterest,
+            uint256 pastInterest, 
+            uint256 pastFee, 
+            uint256 currentInterest, 
             uint256 currentFee
-        ) = _distributeLoanPayments(
-            amount,
-            offer.lender,
-            msg.sender,
-            msg.sender,
-            lien
+        ) = FixedInterest.computeAmountOwed(lien);
+        
+        Distributions.distributeLoanPayments(
+            lien.currency,
+            amount,                 // distribute new principal
+            amountOwed,
+            lien.state.amountOwed,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
+            lien.lender,            // original lender
+            lien.recipient,         // original recipient
+            offer.lender,           // primary payer
+            msg.sender,             // pays any remaining amount
+            msg.sender              // receives net principal
         );
+
+        delete liens[oldLienId];
 
         emit Refinance(
             oldLienId,
             newLienId,
             amount,
             amountOwed,
-            principal,
+            lien.state.amountOwed,
             pastInterest,
             pastFee,
             currentInterest,
             currentFee
-        );
-    }
-
-    function _refinance(
-        uint256 oldLienId,
-        uint256 amount,
-        Lien calldata lien,
-        LoanOffer calldata offer
-    ) internal returns (uint256 newLienId) {
-        delete liens[oldLienId];
-
-        Lien memory newLien = Lien(
-            offer.lender,
-            offer.recipient,
-            msg.sender,
-            offer.currency,
-            offer.collection,
-            lien.tokenId,
-            offer.size,
-            amount,
-            offer.rate,
-            offer.fee,
-            offer.period,
-            offer.gracePeriod,
-            offer.tenor,
-            block.timestamp,
-            LienState({
-                paidThrough: block.timestamp,
-                amountOwed: amount
-            })
-        );
-
-        unchecked {
-            liens[newLienId = _nextLienId++] = keccak256(abi.encode(newLien));
-        }
-
-        emit Borrow(
-            newLienId,
-            newLien.lender,
-            newLien.borrower,
-            newLien.recipient,
-            newLien.collection,
-            newLien.currency,
-            newLien.tokenId,
-            newLien.size,
-            newLien.principal,
-            newLien.rate,
-            newLien.fee,
-            newLien.period,
-            newLien.gracePeriod,
-            newLien.tenor,
-            newLien.startTime
         );
     }
 
@@ -408,14 +353,9 @@ contract Kettle is IKettle, Initializable {
             uint256 currentFee
         ) = _repay(lien, lienId);
 
-        // transfer collateral back to borrower
         Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-
-        // transfer amount owed from borrower to lender
-        IERC20(lien.currency).transferFrom(msg.sender, lien.lender, lien.state.amountOwed + pastInterest + currentInterest + pastFee + currentFee);
-
-        // transfer fee interest from borrower to fee receiver
-        IERC20(lien.currency).transferFrom(msg.sender, lien.recipient, pastFee + currentFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, lien.state.amountOwed + pastInterest + currentInterest + pastFee + currentFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     function _repay(
@@ -459,7 +399,6 @@ contract Kettle is IKettle, Initializable {
 
         delete liens[lienId];
 
-        // transfer collateral back to lender
         Transfer.transferToken(lien.collection, address(this), lien.lender, lien.tokenId, lien.size);
 
         emit Claim(lienId, lien.lender);
@@ -710,17 +649,21 @@ contract Kettle is IKettle, Initializable {
             revert InsufficientAskAmount();
         }
 
-        // transfer payments
-        uint256 netPrincipalToSeller = askOffer.amount - amountOwed;
-
-        // transfer net principal to seller
-        Transfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, netPrincipalToSeller);
-
-        // transfer principal to lender
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest + lien.state.amountOwed);
-
-        // transfer fee to recipient
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        Distributions.distributeLoanPayments(
+            lien.currency, 
+            askOffer.amount,            // distribute ask amount
+            amountOwed, 
+            lien.state.amountOwed, 
+            pastInterest, 
+            pastFee, 
+            currentInterest, 
+            currentFee, 
+            lien.lender, 
+            lien.recipient, 
+            msg.sender,                 // buyer pays primary amount
+            msg.sender,                 // buyer pays residual amount
+            askOffer.maker              // seller receives net principal
+        );
 
         // transfer collateral from this to buyer
         Transfer.transferToken(
@@ -777,22 +720,31 @@ contract Kettle is IKettle, Initializable {
         if (bidOffer.size != lien.size) {
             revert SizeMismatch();
         }
-        
+
         (
             uint256 amountOwed,
-            uint256 principal,
-            uint256 pastInterest,
-            uint256 pastFee,
-            uint256 currentInterest,
+            uint256 pastInterest, 
+            uint256 pastFee, 
+            uint256 currentInterest, 
             uint256 currentFee
-        ) = _distributeLoanPayments(
-            bidOffer.amount,
-            bidOffer.maker,
-            msg.sender,
-            msg.sender,
-            lien
+        ) = FixedInterest.computeAmountOwed(lien);
+        
+        Distributions.distributeLoanPayments(
+            lien.currency,
+            bidOffer.amount,                // distribute bid amount
+            amountOwed,
+            lien.state.amountOwed,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
+            lien.lender,
+            lien.recipient,
+            bidOffer.maker,                 // buyer pays primary amount
+            msg.sender,                     // seller pays residual amount
+            msg.sender                      // seller receives net principal
         );
-
+        
         // transfer collateral from this to buyer
         Transfer.transferToken(
             lien.collection, 
@@ -814,7 +766,7 @@ contract Kettle is IKettle, Initializable {
             lien.size, 
             bidOffer.amount, 
             amountOwed, 
-            principal, 
+            lien.state.amountOwed, 
             pastInterest, 
             pastFee, 
             currentInterest, 
@@ -874,21 +826,33 @@ contract Kettle is IKettle, Initializable {
         uint256 _borrowAmount = Math.min(amount, askOffer.amount);
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender);
 
-        // close existing lien
-        _distributeLoanPayments(
-            _borrowAmount, 
-            loanOffer.lender,   // new lender pays primary amount
-            msg.sender,         // buyer must pay any remaining amount
-            lien.borrower,      // borrower receives net principal
-            lien
+        Distributions.distributeLoanPayments(
+            lien.currency,
+            _borrowAmount,                  // distribute new principal
+            amountOwed,
+            lien.state.amountOwed,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
+            lien.lender,
+            lien.recipient,
+            loanOffer.lender,               // new lender pays primary amount
+            msg.sender,                     // buyer pays any remaining amount
+            lien.borrower                   // borrower receives net principal
         );
 
-        // transfer rest of amount from buyer to seller
+        // remaining amount owed by buyer is the diff between ask and max of borrow or amount owed
+        // buyer already pays off lender if borrow amount is less than amount owed
+        // if borrow amount is greater than amount owed, then buyer pays rest
+        uint256 remainingAmountOwed = askOffer.amount - Math.max(_borrowAmount, amountOwed);
+
+        // transfer rest of amount from buyer to seller (ask must be greater than amount owed)
         Transfer.transferCurrency(
             lien.currency, 
             msg.sender, 
             askOffer.maker, 
-            askOffer.amount - Math.max(_borrowAmount, amountOwed)
+            remainingAmountOwed
         );
 
         delete liens[lienId];
@@ -970,20 +934,28 @@ contract Kettle is IKettle, Initializable {
             bidOffer.amount - bidOffer.borrowAmount
         );
 
-        // close existing lien
         (
             uint256 amountOwed,
-            uint256 principal,
-            uint256 pastInterest,
-            uint256 pastFee,
-            uint256 currentInterest,
+            uint256 pastInterest, 
+            uint256 pastFee, 
+            uint256 currentInterest, 
             uint256 currentFee
-        ) = _distributeLoanPayments(
-            bidOffer.amount,
-            address(this),
-            msg.sender,
-            msg.sender,
-            lien
+        ) = FixedInterest.computeAmountOwed(lien);
+
+        Distributions.distributeLoanPayments(
+            lien.currency,
+            bidOffer.amount,            // distribute bid amount
+            amountOwed,
+            lien.state.amountOwed,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
+            lien.lender,
+            lien.recipient,
+            address(this),              // this is the primary payer
+            msg.sender,                 // seller pays residual amount
+            msg.sender                  // seller receives net principal
         );
 
         delete liens[lienId];
@@ -1000,117 +972,12 @@ contract Kettle is IKettle, Initializable {
             bidOffer.amount,
             bidOffer.borrowAmount, 
             amountOwed, 
-            principal, 
+            lien.state.amountOwed, 
             pastInterest, 
             pastFee, 
             currentInterest, 
             currentFee
         );
-    }
-
-    /**
-     * @dev distribute payments to lenders and recipients
-     * @param amount amount to be distributed sourced from primary payer
-     * @param primaryPayer primary payer
-     * @param residualPayer residual payer
-     * @param residualRecipient residual receiver
-     * @param lien the active lien
-     */
-    function _distributeLoanPayments(
-        uint256 amount,
-        address primaryPayer,
-        address residualPayer,
-        address residualRecipient,
-        Lien calldata lien
-    ) internal returns (
-        uint256 amountOwed,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
-    ){
-        (
-            amountOwed,
-            pastInterest, 
-            pastFee, 
-            currentInterest, 
-            currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
-
-        principal = lien.state.amountOwed;
-        uint256 interest = pastInterest + currentInterest;
-        uint256 fee = pastFee + currentFee;
-
-        if (amount < amountOwed) {
-
-            RefinanceTranche[3] memory tranches = Helpers.createTranches(
-                principal, 
-                lien.lender,
-                pastInterest + currentInterest, 
-                lien.lender, 
-                pastFee + currentFee, 
-                lien.recipient
-            );
-
-            // +-----------------------------------------------------------+
-            // |                                              amount       |
-            // |-------------------------|-----------------|----↓----------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
-
-            if (amount > tranches[0].amount + tranches[1].amount) {
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[0].recipient, tranches[0].amount);
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[1].recipient, tranches[1].amount);
-
-                uint256 lenderTranchePayment = amount - (tranches[0].amount + tranches[1].amount);
-                uint256 residualTranchePayment = tranches[2].amount - lenderTranchePayment;
-
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[2].recipient, lenderTranchePayment);
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[2].recipient, residualTranchePayment);
-            }
-
-            // +-----------------------------------------------------------+
-            // |                             amount                        |
-            // |-------------------------|-----↓-----------|---------------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
-
-            else if (amount > tranches[0].amount) {
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[0].recipient, tranches[0].amount);
-
-                uint256 lenderTranchePayment = amount - tranches[0].amount;
-                uint256 residualTranchePayment = tranches[1].amount - lenderTranchePayment;
-
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[1].recipient, lenderTranchePayment);
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[1].recipient, residualTranchePayment);
-
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[2].recipient, tranches[2].amount);
-            }
-
-            // +-----------------------------------------------------------+
-            // |       amount                                              |
-            // |---------↓---------------|-----------------|---------------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
-
-            else {
-                uint256 lenderTranchePayment = amount;
-                uint256 residualTranchePayment = tranches[0].amount - lenderTranchePayment;
-
-                Transfer.transferCurrency(lien.currency, primaryPayer, tranches[0].recipient, lenderTranchePayment);
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[0].recipient, residualTranchePayment);
-
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[1].recipient, tranches[1].amount);
-                Transfer.transferCurrency(lien.currency, residualPayer, tranches[2].recipient, tranches[2].amount);
-            }
-
-        } else {
-            uint256 netPrincipalReceived = amount - amountOwed;
-            Transfer.transferCurrency(lien.currency, primaryPayer, residualRecipient, netPrincipalReceived);
-            Transfer.transferCurrency(lien.currency, primaryPayer, lien.lender, interest + principal);
-            Transfer.transferCurrency(lien.currency, primaryPayer, lien.recipient, fee);
-        }
     }
 
     modifier validateLien(Lien calldata lien, uint256 lienId) {
