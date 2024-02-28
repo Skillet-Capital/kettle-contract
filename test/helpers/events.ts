@@ -127,6 +127,22 @@ export function extractBuyWithLoanLog(receipt: ContractTransactionReceipt) {
   }
 }
 
+export function extractSellWithLoanLog(receipt: ContractTransactionReceipt) {
+  const log = extractLog(receipt, "SellWithLoan");
+
+  return {
+    lienId: log.lienId,
+    buyer: log.buyer,
+    seller: log.seller,
+    currency: log.currency,
+    collection: log.collection,
+    tokenId: log.tokenId,
+    size: log.size,
+    amount: log.amount,
+    borrowAmount: log.borrowAmount
+  }
+}
+
 export function extractBuyInLienLog(receipt: ContractTransactionReceipt) {
   const log = extractLog(receipt, "BuyInLien");
 

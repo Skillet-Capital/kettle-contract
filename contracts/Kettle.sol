@@ -582,80 +582,89 @@ contract Kettle is IKettle, Initializable {
         );
     }
 
-    // /**
-    //  * @dev Sell an asset into a bid with a loan
-    //  * @param loanOffer loan offer
-    //  * @param bidOffer ask offer
-    //  */
-    // function sellWithLoan(
-    //     LoanOffer calldata loanOffer,
-    //     MarketOffer calldata bidOffer,
-    //     uint256 tokenId,
-    //     bytes32[] calldata proof
-    // ) public returns (uint256 lienId) {
+    /**
+     * @dev Sell an asset into a bid with a loan
+     * @param loanOffer loan offer
+     * @param bidOffer ask offer
+     */
+    function sellWithLoan(
+        LoanOffer calldata loanOffer,
+        MarketOffer calldata bidOffer,
+        uint256 tokenId,
+        bytes32[] calldata proof
+    ) public returns (uint256 lienId) {
 
-    //     if (askOffer.side != Side.BID) {
-    //         revert OfferNotBid();
-    //     }
+        if (bidOffer.side != Side.BID) {
+            revert OfferNotBid();
+        }
 
-    //     if (!bidOffer.withLoan) {
-    //         revert BidNotWithLoan();
-    //     }
+        if (!bidOffer.withLoan) {
+            revert BidNotWithLoan();
+        }
 
-    //     if (loanOffer.collection != bidOffer.collection) {
-    //         revert CollectionMismatch();
-    //     }
+        if (bidOffer.amount < bidOffer.borrowAmount) {
+            revert BidCannotBorrow();
+        }
 
-    //     if (loanOffer.currency != bidOffer.currency) {
-    //         revert CurrencyMismatch();
-    //     }
+        if (loanOffer.collection != bidOffer.collection) {
+            revert CollectionMismatch();
+        }
 
-    //     if (loanOffer.size != bidOffer.size) {
-    //         revert SizeMismatch();
-    //     }
+        if (loanOffer.currency != bidOffer.currency) {
+            revert CurrencyMismatch();
+        }
 
-    //     uint256 _borrowAmount = Math.min(amount, askOffer.amount);
+        if (loanOffer.size != bidOffer.size) {
+            revert SizeMismatch();
+        }
 
-    //     // start a lien
-    //     lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender);
+        lienId = _borrow(loanOffer, bidOffer.borrowAmount, tokenId, bidOffer.maker);
 
-    //     // lock collateral
-    //     Transfer.transferToken(
-    //         loanOffer.collection, 
-    //         askOffer.maker, 
-    //         address(this),
-    //         tokenId,
-    //         askOffer.size
-    //     );
+        // transfer borrow amount to this
+        Transfer.transferCurrency(
+            loanOffer.currency,
+            loanOffer.lender, 
+            address(this), 
+            bidOffer.borrowAmount
+        );
 
-    //     // transfer principal to seller
-    //     Transfer.transferCurrency(
-    //         loanOffer.currency, 
-    //         loanOffer.lender, 
-    //         askOffer.maker, 
-    //         _borrowAmount
-    //     );
+        // transfer rest of bid from buyer to this
+        Transfer.transferCurrency(
+            bidOffer.currency, 
+            bidOffer.maker, 
+            address(this), 
+            bidOffer.amount - bidOffer.borrowAmount
+        );
 
-    //     // Transfer rest from buyer to seller
-    //     Transfer.transferCurrency(
-    //         loanOffer.currency, 
-    //         msg.sender,
-    //         askOffer.maker, 
-    //         askOffer.amount - _borrowAmount
-    //     );
+        // transfer all currency to seller
+        Transfer.transferCurrency(
+            bidOffer.currency, 
+            address(this), 
+            msg.sender, 
+            bidOffer.amount
+        );
 
-    //     emit BuyWithLoan(
-    //         lienId,
-    //         msg.sender,
-    //         askOffer.maker,
-    //         askOffer.currency,
-    //         askOffer.collection,
-    //         tokenId,
-    //         askOffer.size,
-    //         askOffer.amount,
-    //         _borrowAmount
-    //     );
-    // }
+        // lock collateral
+        Transfer.transferToken(
+            loanOffer.collection, 
+            msg.sender, 
+            address(this),
+            tokenId,
+            bidOffer.size
+        );
+
+        emit SellWithLoan(
+            lienId,
+            bidOffer.maker,
+            msg.sender,
+            bidOffer.currency,
+            bidOffer.collection,
+            tokenId,
+            bidOffer.size,
+            bidOffer.amount,
+            bidOffer.borrowAmount
+        );
+    }
 
     /**
      * @dev Purchase an asset in a lien, closes lien, and transfers asset to buyer
