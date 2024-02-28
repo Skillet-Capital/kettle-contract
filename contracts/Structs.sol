@@ -62,6 +62,20 @@ struct BorrowOffer {
     uint256 tenor;
 }
 
+enum Side { Buy, Sell }
+
+struct MarketOffer {
+    Side side;
+    address maker;
+    address currency;
+    address collection;
+    uint256 tokenId;
+    uint256 size;
+    uint256 amount;
+    bool withLoan;
+    uint256 borrowAmount;
+}
+
 struct RefinanceTranche {
     uint256 amount;
     address recipient;
