@@ -19,6 +19,7 @@ export interface Fixture {
   kettle: Kettle,
   testErc20: TestERC20,
   testErc721: TestERC721,
+  tokens: number[],
   tokenId: number,
   principal: bigint
 }
@@ -85,6 +86,7 @@ export async function getFixture(): Promise<Fixture> {
     kettle,
     testErc20,
     testErc721,
+    tokens: [tokenId, tokenId + 1, tokenId + 2, tokenId + 3, tokenId + 4, tokenId + 5],
     tokenId,
     principal
   }
