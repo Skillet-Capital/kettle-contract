@@ -9,6 +9,7 @@ import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
 import { extractBorrowLog, extractSellWithLoanLog } from './helpers/events';
+import { generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
@@ -21,7 +22,7 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
-describe("Buy In Lien With Loan", function () {
+describe("Sell With Loan", function () {
 
   let lender: Signer;
   let seller: Signer;
@@ -31,6 +32,7 @@ describe("Buy In Lien With Loan", function () {
   let kettle: Kettle;
 
   let principal: bigint;
+  let tokens: number[];
   let tokenId: number;
 
   let testErc721: TestERC721;
@@ -47,6 +49,7 @@ describe("Buy In Lien With Loan", function () {
 
     principal = fixture.principal;
     tokenId = fixture.tokenId;
+    tokens = fixture.tokens;
 
     testErc721 = fixture.testErc721;
     testErc20 = fixture.testErc20;
@@ -64,7 +67,8 @@ describe("Buy In Lien With Loan", function () {
       maker: buyer,
       currency: testErc20,
       collection: testErc721,
-      tokenId: tokenId,
+      criteria: 0,
+      identifier: tokenId,
       size: 1,
       amount: principal,
       withLoan: true,
@@ -76,6 +80,7 @@ describe("Buy In Lien With Loan", function () {
       recipient: recipient,
       currency: testErc20,
       collection: testErc721,
+      criteria: 0,
       identifier: tokenId,
       size: 1,
       totalAmount: principal,
@@ -89,99 +94,123 @@ describe("Buy In Lien With Loan", function () {
     }
   })
 
-  it("should sell an asset into a bid using a loan", async () => {
+  for (const criteria of [0, 1]) {
+    describe(`criteria: ${criteria == 0 ? "SIMPLE" : "PROOF"}`, () => {
+      let proof: string[];
+      let identifier: bigint;
 
-    // before checks
-    expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
-    const sellerBalance_before = await testErc20.balanceOf(seller);
-    const buyerBalance_before = await testErc20.balanceOf(buyer);
-    const lenderBalance_before = await testErc20.balanceOf(lender);
+      beforeEach(async () => {
+        if (criteria === 0) {
+          proof = [];
+          identifier = BigInt(tokenId);
+        } else {
+          proof = generateMerkleProofForToken(tokens, tokenId);
+          identifier = BigInt(generateMerkleRootForCollection(tokens));
+        }
+      });
 
-    const txn = await kettle.connect(seller).sellWithLoan(
-      loanOffer,
-      bidOffer,
-      tokenId,
-      []
-    );
+      it("should sell an asset into a bid using a loan", async () => {
 
-    // after checks
-    expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
-
-    expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
-    expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
-    expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - BigInt(bidOffer.borrowAmount));
-
-    // log checks
-    const { borrowLog, sellWithLoanLog } = await txn.wait().then(receipt => ({
-      borrowLog: extractBorrowLog(receipt!),
-      sellWithLoanLog: extractSellWithLoanLog(receipt!)
-    }));
-
-    expect(borrowLog.lienId).to.equal(sellWithLoanLog.lienId);
-    expect(borrowLog.lien.borrower).to.equal(sellWithLoanLog.buyer).to.equal(bidOffer.maker).to.equal(buyer);
+        // before checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
+        const sellerBalance_before = await testErc20.balanceOf(seller);
+        const buyerBalance_before = await testErc20.balanceOf(buyer);
+        const lenderBalance_before = await testErc20.balanceOf(lender);
     
-    expect(sellWithLoanLog.seller).to.equal(seller);
-    expect(borrowLog.lien.lender).to.equal(lender);
-
-    expect(borrowLog.lien.currency).to.equal(loanOffer.currency);
-    expect(borrowLog.lien.collection).to.equal(loanOffer.collection);
-    expect(borrowLog.lien.tokenId).to.equal(loanOffer.identifier).to.equal(tokenId);
-    expect(borrowLog.lien.size).to.equal(loanOffer.size);
-    expect(borrowLog.lien.principal).to.equal(bidOffer.borrowAmount);
-    expect(sellWithLoanLog.amount).to.equal(bidOffer.amount).to.equal(principal);
-  })
+        const txn = await kettle.connect(seller).sellWithLoan(
+          tokenId,
+          { ...loanOffer, identifier, criteria },
+          { ...bidOffer, identifier, criteria },
+          proof,
+          proof
+        );
+    
+        // after checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+    
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
+        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - BigInt(bidOffer.borrowAmount));
+    
+        // log checks
+        const { borrowLog, sellWithLoanLog } = await txn.wait().then(receipt => ({
+          borrowLog: extractBorrowLog(receipt!),
+          sellWithLoanLog: extractSellWithLoanLog(receipt!)
+        }));
+    
+        expect(borrowLog.lienId).to.equal(sellWithLoanLog.lienId);
+        expect(borrowLog.lien.borrower).to.equal(sellWithLoanLog.buyer).to.equal(bidOffer.maker).to.equal(buyer);
+        
+        expect(sellWithLoanLog.seller).to.equal(seller);
+        expect(borrowLog.lien.lender).to.equal(lender);
+    
+        expect(borrowLog.lien.currency).to.equal(loanOffer.currency);
+        expect(borrowLog.lien.collection).to.equal(loanOffer.collection);
+        expect(borrowLog.lien.tokenId).to.equal(loanOffer.identifier).to.equal(tokenId);
+        expect(borrowLog.lien.size).to.equal(loanOffer.size);
+        expect(borrowLog.lien.principal).to.equal(bidOffer.borrowAmount);
+        expect(sellWithLoanLog.amount).to.equal(bidOffer.amount).to.equal(principal);
+      })
+    });
+  }
 
   describe("fail checks", () => {
     it("should fail if offer is not bid", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, side: 1 },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "OfferNotBid");
     });
 
     it("should fail if bid not with loan", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, withLoan: false },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "BidNotWithLoan");
     });
 
     it("should fail if bid amount less than borrow amount", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, borrowAmount: principal * 2n },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "BidCannotBorrow");
     });
 
     it("should fail if collections do not match", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, collection: testErc20 },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");
     });
 
     it("should fail if currencies do not match", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, currency: testErc721 },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");
     });
 
     it("should fail if sizes do not match", async () => {
       await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
         loanOffer,
         { ...bidOffer, size: 2 },
-        tokenId,
+        [],
         []
       )).to.be.revertedWithCustomError(kettle, "SizeMismatch");
     });
