@@ -1,25 +1,19 @@
-import {
-  time,
-  loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { Signer, parseUnits } from "ethers";
+import { Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { extractMarketOrderLog } from './helpers/events';
+import { generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, MarketOfferStruct } from "../typechain-types/contracts/Kettle";
+import { MarketOfferStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
-const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
 describe("Buy With Loan", function () {
 
@@ -29,9 +23,9 @@ describe("Buy With Loan", function () {
 
   let kettle: Kettle;
 
+  let tokens: number[];
+  let tokenId: number;
   let principal: bigint;
-  let tokenId1: number;
-  let tokenId2: number;
 
   let testErc721: TestERC721;
   let testErc20: TestERC20;
@@ -41,8 +35,8 @@ describe("Buy With Loan", function () {
 
   beforeEach(async () => {
     const fixture = await getFixture();
-    buyer = fixture.borrower;
-    seller = fixture.lender;
+    buyer = fixture.offerMaker;
+    seller = fixture.borrower;
     recipient = fixture.recipient;
 
     kettle = fixture.kettle;
@@ -52,125 +46,133 @@ describe("Buy With Loan", function () {
 
     principal = fixture.principal;
 
-    tokenId1 = 69;
-    tokenId2 = 420;
+    tokens = fixture.tokens;
+    tokenId = fixture.tokenId;
   });
 
-  it("should sell an asset into a bid", async () => {
-    // mint token to seller
-    await testErc721.mint(seller, tokenId1);
-    await testErc721.connect(seller).setApprovalForAll(kettle, true);
+  for (const criteria of [0, 1]) {
+    describe(`criteria: ${criteria == 0 ? "SIMPLE" : "PROOF"}`, () => {
+      let proof: string[];
+      let identifier: bigint;
 
-    bidOffer = {
-      side: 0,
-      maker: buyer,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId1,
-      size: 1,
-      amount: principal,
-      withLoan: false,
-      borrowAmount: 0
-    }
+      beforeEach(async () => {
+        if (criteria === 0) {
+          proof = [];
+          identifier = BigInt(tokenId);
+        } else {
+          proof = generateMerkleProofForToken(tokens, tokenId);
+          identifier = BigInt(generateMerkleRootForCollection(tokens));
+        }
+      });
 
-    // before checks
-    expect(await testErc721.ownerOf(tokenId1)).to.equal(seller);
-    const sellerBalance_before = await testErc20.balanceOf(seller);
-    const buyerBalance_before = await testErc20.balanceOf(buyer);
+      it("should sell an asset into a bid", async () => {
+        bidOffer = {
+          side: 0,
+          maker: buyer,
+          currency: testErc20,
+          collection: testErc721,
+          criteria,
+          identifier,
+          size: 1,
+          amount: principal,
+          withLoan: false,
+          borrowAmount: 0
+        }
 
-    const txn = await kettle.connect(seller).marketOrder(
-      bidOffer,
-      tokenId1,
-      []
-    );
+        // before checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
+        const sellerBalance_before = await testErc20.balanceOf(seller);
+        const buyerBalance_before = await testErc20.balanceOf(buyer);
 
-    // after checks
-    expect(await testErc721.ownerOf(tokenId1)).to.equal(buyer);
-    expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
-    expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+        const txn = await kettle.connect(seller).marketOrder(
+          tokenId,
+          bidOffer,
+          proof
+        );
 
-    // log checks
-    const { marketOrderLog } = await txn.wait().then(receipt => ({
-      marketOrderLog: extractMarketOrderLog(receipt!)
-    }));
+        // after checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
 
-    expect(marketOrderLog.buyer).to.equal(buyer);
-    expect(marketOrderLog.seller).to.equal(seller);
-    expect(marketOrderLog.currency).to.equal(testErc20);
-    expect(marketOrderLog.collection).to.equal(testErc721);
-    expect(marketOrderLog.tokenId).to.equal(tokenId1);
-    expect(marketOrderLog.size).to.equal(1);
-    expect(marketOrderLog.amount).to.equal(principal);
-  });
+        // log checks
+        const { marketOrderLog } = await txn.wait().then(receipt => ({
+          marketOrderLog: extractMarketOrderLog(receipt!)
+        }));
 
-  it("should fail to sell an asset into a bid requiring a loan", async () => {
-    // mint token to seller
-    await testErc721.mint(seller, tokenId1);
-    await testErc721.connect(seller).setApprovalForAll(kettle, true);
+        expect(marketOrderLog.buyer).to.equal(buyer);
+        expect(marketOrderLog.seller).to.equal(seller);
+        expect(marketOrderLog.currency).to.equal(testErc20);
+        expect(marketOrderLog.collection).to.equal(testErc721);
+        expect(marketOrderLog.tokenId).to.equal(tokenId);
+        expect(marketOrderLog.size).to.equal(1);
+        expect(marketOrderLog.amount).to.equal(principal);
+      });
 
-    bidOffer = {
-      side: 0,
-      maker: buyer,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId1,
-      size: 1,
-      amount: principal,
-      withLoan: true,
-      borrowAmount: 0
-    }
+      it("should fail to sell an asset into a bid requiring a loan", async () => {  
+        bidOffer = {
+          side: 0,
+          maker: buyer,
+          currency: testErc20,
+          collection: testErc721,
+          criteria,
+          identifier: identifier,
+          size: 1,
+          amount: principal,
+          withLoan: true,
+          borrowAmount: 0
+        }
+  
+        await expect(kettle.connect(seller).marketOrder(
+          tokenId,
+          bidOffer,
+          proof
+        )).to.be.revertedWithCustomError(kettle, "BidRequiresLoan");
+      });
 
-    await expect(kettle.connect(seller).marketOrder(
-      bidOffer,
-      tokenId1,
-      []
-    )).to.be.revertedWithCustomError(kettle, "BidRequiresLoan");
-  });
-
-  it("should buy an asset with an ask", async () => {
-    // mint token to seller
-    await testErc721.mint(seller, tokenId1);
-    await testErc721.connect(seller).setApprovalForAll(kettle, true);
-
-    askOffer = {
-      side: 1,
-      maker: seller,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId1,
-      size: 1,
-      amount: principal,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    // before checks
-    expect(await testErc721.ownerOf(tokenId1)).to.equal(seller);
-    const sellerBalance_before = await testErc20.balanceOf(seller);
-    const buyerBalance_before = await testErc20.balanceOf(buyer);
-
-    const txn = await kettle.connect(buyer).marketOrder(
-      askOffer,
-      tokenId1,
-      []
-    );
-
-    // after checks
-    expect(await testErc721.ownerOf(tokenId1)).to.equal(buyer);
-    expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
-    expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
-
-    // log checks
-    const { marketOrderLog } = await txn.wait().then(receipt => ({
-      marketOrderLog: extractMarketOrderLog(receipt!)
-    }));
-
-    expect(marketOrderLog.buyer).to.equal(buyer);
-    expect(marketOrderLog.seller).to.equal(seller);
-    expect(marketOrderLog.currency).to.equal(testErc20);
-    expect(marketOrderLog.collection).to.equal(testErc721);
-    expect(marketOrderLog.tokenId).to.equal(tokenId1);
-    expect(marketOrderLog.size).to.equal(1);
-    expect(marketOrderLog.amount).to.equal(principal);
-  });
+      it("should buy an asset with an ask", async () => {  
+        askOffer = {
+          side: 1,
+          maker: seller,
+          currency: testErc20,
+          collection: testErc721,
+          criteria,
+          identifier,
+          size: 1,
+          amount: principal,
+          withLoan: false,
+          borrowAmount: 0
+        }
+  
+        // before checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
+        const sellerBalance_before = await testErc20.balanceOf(seller);
+        const buyerBalance_before = await testErc20.balanceOf(buyer);
+  
+        const txn = await kettle.connect(buyer).marketOrder(
+          tokenId,
+          askOffer,
+          proof
+        );
+  
+        // after checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+  
+        // log checks
+        const { marketOrderLog } = await txn.wait().then(receipt => ({
+          marketOrderLog: extractMarketOrderLog(receipt!)
+        }));
+  
+        expect(marketOrderLog.buyer).to.equal(buyer);
+        expect(marketOrderLog.seller).to.equal(seller);
+        expect(marketOrderLog.currency).to.equal(testErc20);
+        expect(marketOrderLog.collection).to.equal(testErc721);
+        expect(marketOrderLog.tokenId).to.equal(tokenId);
+        expect(marketOrderLog.size).to.equal(1);
+        expect(marketOrderLog.amount).to.equal(principal);
+      });
+    })
+  }
 });
