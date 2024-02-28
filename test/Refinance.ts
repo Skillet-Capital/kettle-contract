@@ -21,7 +21,7 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
-describe("Fixed Interest", function () {
+describe("Refinance", function () {
 
   let owner: Signer;
   let borrower: Signer;
@@ -147,13 +147,13 @@ describe("Fixed Interest", function () {
         []
       );
 
-      const { refinanceLog, borrowLog: { lienId: newLienId, lien: newLien } } = await txn.wait().then(
-        (receipt) => ({
-          refinanceLog: extractRefinanceLog(receipt!),
-          borrowLog: extractBorrowLog(receipt!)
+      // const { refinanceLog, borrowLog: { lienId: newLienId, lien: newLien } } = await txn.wait().then(
+      //   (receipt) => ({
+      //     refinanceLog: extractRefinanceLog(receipt!),
+      //     borrowLog: extractBorrowLog(receipt!)
         
-        })
-      );
+      //   })
+      // );
 
       // console.log(refinanceLog);
       // console.log(newLienId);
@@ -265,13 +265,13 @@ describe("Fixed Interest", function () {
         []
       );
 
-      const { refinanceLog, borrowLog: { lienId: newLienId, lien: newLien } } = await txn.wait().then(
-        (receipt) => ({
-          refinanceLog: extractRefinanceLog(receipt!),
-          borrowLog: extractBorrowLog(receipt!)
+      // const { refinanceLog, borrowLog: { lienId: newLienId, lien: newLien } } = await txn.wait().then(
+      //   (receipt) => ({
+      //     refinanceLog: extractRefinanceLog(receipt!),
+      //     borrowLog: extractBorrowLog(receipt!)
         
-        })
-      );
+      //   })
+      // );
 
       // console.log(refinanceLog);
       // console.log(newLienId);

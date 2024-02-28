@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, upgrades } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 import { MaxUint256 } from "@ethersproject/constants";
 
@@ -13,6 +13,7 @@ export interface Fixture {
   borrower: Signer,
   lender: Signer,
   lender2: Signer,
+  offerMaker: Signer,
   recipient: Signer,
   signers: Signer[],
   kettle: Kettle,
@@ -23,7 +24,7 @@ export interface Fixture {
 }
 
 export async function getFixture(): Promise<Fixture> {
-  const [owner, borrower, lender, lender2, recipient, ...signers] = await ethers.getSigners();
+  const [owner, borrower, lender, lender2, recipient, offerMaker, ...signers] = await ethers.getSigners();
 
   /* Deploy Helpers */
   const helpers = await ethers.getContractFactory("Helpers");
@@ -38,10 +39,13 @@ export async function getFixture(): Promise<Fixture> {
   await transfer.waitForDeployment();
 
   /* Deploy Kettle */
-  const kettle = await ethers.deployContract("Kettle", { 
-    libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Helpers: helper.target },
-    gasLimit: 1e8 
+  await upgrades.silenceWarnings();
+  const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Helpers: helper.target } });
+  const kettle = await upgrades.deployProxy(Kettle, [], { 
+    initializer: 'initialize',
+    unsafeAllow: ['external-library-linking'],
   });
+
   await kettle.waitForDeployment();
 
   /* Deploy TestERC20 */
@@ -58,20 +62,24 @@ export async function getFixture(): Promise<Fixture> {
   await testErc721.connect(borrower).setApprovalForAll(kettle, true);
 
   const principal = parseUnits("10000", 6);
-  await testErc20.mint(lender, principal * 2n);
+  await testErc20.mint(lender, principal * 10n);
   await testErc20.connect(lender).approve(kettle, MaxUint256.toString());
 
-  await testErc20.mint(lender2, principal * 2n);
+  await testErc20.mint(lender2, principal * 10n);
   await testErc20.connect(lender2).approve(kettle, MaxUint256.toString());
 
-  await testErc20.mint(borrower, principal * 2n);
+  await testErc20.mint(borrower, principal * 10n);
   await testErc20.connect(borrower).approve(kettle, MaxUint256.toString());
+
+  await testErc20.mint(offerMaker, principal * 10n);
+  await testErc20.connect(offerMaker).approve(kettle, MaxUint256.toString());
 
   return {
     owner,
     borrower,
     lender,
     lender2,
+    offerMaker,
     recipient,
     signers,
     kettle,

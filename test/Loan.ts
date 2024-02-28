@@ -21,7 +21,7 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
-describe("Fixed Interest", function () {
+describe("Loan", function () {
 
   let owner: Signer;
   let borrower: Signer;
