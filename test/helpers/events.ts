@@ -214,3 +214,17 @@ export function extractSellInLienWithLoanLog(receipt: ContractTransactionReceipt
     currentFee: log.currentFee
   }
 }
+
+export function extractMarketOrderLog(receipt: ContractTransactionReceipt) {
+  const log = extractLog(receipt, "MarketOrder");
+
+  return {
+    buyer: log.buyer,
+    seller: log.seller,
+    currency: log.currency,
+    collection: log.collection,
+    tokenId: log.tokenId,
+    size: log.size,
+    amount: log.amount
+  }
+}

@@ -8,7 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
-import { extractBorrowLog, extractBuyWithLoanLog } from './helpers/events';
+import { extractMarketOrderLog } from './helpers/events';
 
 import {
   TestERC20,
@@ -88,6 +88,19 @@ describe("Buy With Loan", function () {
     expect(await testErc721.ownerOf(tokenId1)).to.equal(buyer);
     expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
     expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+
+    // log checks
+    const { marketOrderLog } = await txn.wait().then(receipt => ({
+      marketOrderLog: extractMarketOrderLog(receipt!)
+    }));
+
+    expect(marketOrderLog.buyer).to.equal(buyer);
+    expect(marketOrderLog.seller).to.equal(seller);
+    expect(marketOrderLog.currency).to.equal(testErc20);
+    expect(marketOrderLog.collection).to.equal(testErc721);
+    expect(marketOrderLog.tokenId).to.equal(tokenId1);
+    expect(marketOrderLog.size).to.equal(1);
+    expect(marketOrderLog.amount).to.equal(principal);
   });
 
   it("should fail to sell an asset into a bid requiring a loan", async () => {
@@ -146,5 +159,18 @@ describe("Buy With Loan", function () {
     expect(await testErc721.ownerOf(tokenId1)).to.equal(buyer);
     expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
     expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+
+    // log checks
+    const { marketOrderLog } = await txn.wait().then(receipt => ({
+      marketOrderLog: extractMarketOrderLog(receipt!)
+    }));
+
+    expect(marketOrderLog.buyer).to.equal(buyer);
+    expect(marketOrderLog.seller).to.equal(seller);
+    expect(marketOrderLog.currency).to.equal(testErc20);
+    expect(marketOrderLog.collection).to.equal(testErc721);
+    expect(marketOrderLog.tokenId).to.equal(tokenId1);
+    expect(marketOrderLog.size).to.equal(1);
+    expect(marketOrderLog.amount).to.equal(principal);
   });
 });

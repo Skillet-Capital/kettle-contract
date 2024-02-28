@@ -464,9 +464,30 @@ contract Kettle is IKettle, Initializable {
             }
             Transfer.transferToken(offer.collection, msg.sender, offer.maker, tokenId, offer.size);
             Transfer.transferCurrency(offer.currency, offer.maker, msg.sender, offer.amount);
+            
+            emit MarketOrder(
+                offer.maker,
+                msg.sender,
+                offer.currency,
+                offer.collection,
+                tokenId,
+                offer.size,
+                offer.amount
+            );
+
         } else {
             Transfer.transferToken(offer.collection, offer.maker, msg.sender, tokenId, offer.size);
             Transfer.transferCurrency(offer.currency, msg.sender, offer.maker, offer.amount);
+            
+            emit MarketOrder(
+                msg.sender,
+                offer.maker,
+                offer.currency,
+                offer.collection,
+                tokenId,
+                offer.size,
+                offer.amount
+            );
         }
     }
 

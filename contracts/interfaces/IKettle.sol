@@ -59,6 +59,16 @@ interface IKettle {
         address indexed lender
     );
 
+    event MarketOrder(
+        address indexed buyer,
+        address indexed seller,
+        address currency,
+        address collection,
+        uint256 tokenId,
+        uint256 size,
+        uint256 amount
+    );
+
     event BuyWithLoan(
         uint256 indexed lienId,
         address indexed buyer,
