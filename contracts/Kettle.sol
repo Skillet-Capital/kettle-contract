@@ -7,7 +7,7 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, RefinanceTranche, MarketOffer, Side } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow } from "./Errors.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
@@ -309,11 +309,12 @@ contract Kettle is IKettle, Initializable {
         Lien calldata lien,
         LoanOffer calldata offer,
         bytes32[] calldata proof
-    ) public validateLien(lien, oldLienId) lienIsCurrent(lien) returns (uint256 newLienId) {
-        if (msg.sender != lien.borrower) {
-            revert Unauthorized();
-        }
-
+    ) public 
+      validateLien(lien, oldLienId) 
+      lienIsCurrent(lien) 
+      onlyBorrower(lien )
+      returns (uint256 newLienId) 
+    {
         newLienId = _refinance(oldLienId, amount, lien, offer);
 
         _distributeLoanPayments(
@@ -445,6 +446,51 @@ contract Kettle is IKettle, Initializable {
         emit Claim(lienId, lien.lender);
     }
 
+    /*//////////////////////////////////////////////////
+                    MARKETPLACE FLOWS
+    //////////////////////////////////////////////////*/
+
+    /**
+     * @dev Execute market order
+     */
+     function marketOrder(
+        MarketOffer calldata offer,
+        uint256 tokenId,
+        bytes32[] calldata proof
+     ) public {
+        if (offer.side == Side.BID) {
+            if (offer.withLoan) {
+                revert BidRequiresLoan();
+            }
+            Transfer.transferToken(offer.collection, msg.sender, offer.maker, tokenId, offer.size);
+            Transfer.transferCurrency(offer.currency, offer.maker, msg.sender, offer.amount);
+            
+            emit MarketOrder(
+                offer.maker,
+                msg.sender,
+                offer.currency,
+                offer.collection,
+                tokenId,
+                offer.size,
+                offer.amount
+            );
+
+        } else {
+            Transfer.transferToken(offer.collection, offer.maker, msg.sender, tokenId, offer.size);
+            Transfer.transferCurrency(offer.currency, msg.sender, offer.maker, offer.amount);
+            
+            emit MarketOrder(
+                msg.sender,
+                offer.maker,
+                offer.currency,
+                offer.collection,
+                tokenId,
+                offer.size,
+                offer.amount
+            );
+        }
+    }
+
     /**
      * @dev Purchase an asset with a loan offer
      * @param loanOffer loan offer
@@ -458,7 +504,7 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata proof
     ) public returns (uint256 lienId) {
 
-        if (askOffer.side != Side.Sell) {
+        if (askOffer.side != Side.ASK) {
             revert OfferNotAsk();
         }
 
@@ -529,7 +575,7 @@ contract Kettle is IKettle, Initializable {
     //     bytes32[] calldata proof
     // ) public returns (uint256 lienId) {
 
-    //     if (askOffer.side != Side.Buy) {
+    //     if (askOffer.side != Side.BID) {
     //         revert OfferNotBid();
     //     }
 
@@ -607,7 +653,7 @@ contract Kettle is IKettle, Initializable {
             revert MakerIsNotBorrower();
         }
 
-        if (askOffer.side != Side.Sell) {
+        if (askOffer.side != Side.ASK) {
             revert OfferNotAsk();
         }
 
@@ -688,7 +734,7 @@ contract Kettle is IKettle, Initializable {
         Lien calldata lien,
         MarketOffer calldata bidOffer
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) {
-        if (bidOffer.side != Side.Buy) {
+        if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
         }
 
@@ -759,7 +805,7 @@ contract Kettle is IKettle, Initializable {
             revert MakerIsNotBorrower();
         }
 
-        if (askOffer.side != Side.Sell) {
+        if (askOffer.side != Side.ASK) {
             revert OfferNotAsk();
         }
 
@@ -845,7 +891,7 @@ contract Kettle is IKettle, Initializable {
         LoanOffer calldata loanOffer,
         MarketOffer calldata bidOffer
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) returns (uint256 newLienId) {
-        if (bidOffer.side != Side.Buy) {
+        if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
         }
 
