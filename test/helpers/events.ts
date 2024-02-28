@@ -8,7 +8,7 @@ export async function getTimestamp(block: number) {
   return ethers.provider.getBlock(block).then((block) => block!.timestamp);
 }
 
-type LogName = "Borrow" | "BuyInLien" | "BuyInLienWithLoan" | "BuyWithLoan" | "Claim" | "Initialized" | "Payment" | "Refinance" | "Repay" | "SellInLien" | "SellInLienWithLoan";
+type LogName = "Borrow" | "BuyInLien" | "BuyInLienWithLoan" | "BuyWithLoan" | "Claim" | "Initialized" | "Payment" | "Refinance" | "Repay" | "SellInLien" | "SellInLienWithLoan" | "SellWithLoan" | "MarketOrder";
 
 function extractLog(receipt: ContractTransactionReceipt, logName: LogName) {
   const KettleInterface = Kettle__factory.createInterface();

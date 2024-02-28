@@ -1,14 +1,10 @@
-import {
-  time,
-  loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { Signer, parseUnits } from "ethers";
+import { Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { extractBorrowLog, extractBuyInLienWithLoanLog } from './helpers/events';
+import { generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
@@ -23,7 +19,6 @@ const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
 describe("Buy In Lien With Loan", function () {
 
-  let owner: Signer;
   let borrower: Signer;
   let lender: Signer;
   let lender2: Signer;
@@ -33,6 +28,7 @@ describe("Buy In Lien With Loan", function () {
   let signers: Signer[];
   let kettle: Kettle;
 
+  let tokens: number[];
   let tokenId: number;
   let testErc721: TestERC721;
 
@@ -42,7 +38,6 @@ describe("Buy In Lien With Loan", function () {
 
   beforeEach(async () => {
     const fixture = await getFixture();
-    owner = fixture.owner;
     borrower = fixture.borrower;
     lender = fixture.lender;
     lender2 = fixture.lender2;
@@ -53,10 +48,11 @@ describe("Buy In Lien With Loan", function () {
     kettle = fixture.kettle;
 
     testErc721 = fixture.testErc721;
+    testErc20 = fixture.testErc20;
 
+    tokens = fixture.tokens;
     tokenId = fixture.tokenId;
     principal = fixture.principal;
-    testErc20 = fixture.testErc20;
   });
 
   let lienId: string | number | bigint;
@@ -71,6 +67,7 @@ describe("Buy In Lien With Loan", function () {
       recipient: recipient,
       currency: testErc20,
       collection: testErc721,
+      criteria: 0,
       identifier: tokenId,
       size: 1,
       totalAmount: principal,
@@ -86,670 +83,415 @@ describe("Buy In Lien With Loan", function () {
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
+
+    askOffer = {
+      side: 1,
+      maker: borrower,
+      currency: testErc20,
+      collection: testErc721,
+      criteria: 0,
+      identifier: tokenId,
+      size: 1,
+      amount: principal,
+      withLoan: false,
+      borrowAmount: 0
+    }
+
+    loanOffer = {
+      lender: lender2,
+      recipient: recipient,
+      currency: testErc20,
+      collection: testErc721,
+      criteria: 0,
+      identifier: tokenId,
+      size: 1,
+      totalAmount: principal,
+      maxAmount: principal,
+      minAmount: principal,
+      tenor: DAY_SECONDS * 365,
+      period: MONTH_SECONDS,
+      rate: "1000",
+      fee: "200",
+      gracePeriod: MONTH_SECONDS
+    }
   });
 
-  for (var i=0; i<2; i++) {
-    const delinquent = i === 1;
+  for (const criteria of [0, 1]) {
+    describe(`criteria: ${criteria == 0 ? "SIMPLE" : "PROOF"}`, () => {
+      let proof: string[];
+      let identifier: bigint;
 
-    describe(`[${delinquent ? 'DELINQUENT' : 'CURRENT'}] should purchase a listed asset in a lien with a loan offer`, () => {
-      let borrowerBalanceBefore: bigint;
-      let recipientBalanceBefore: bigint;
-      let lenderBalanceBefore: bigint;
-      let lender2BalanceBefore: bigint;
-      let bidderBalanceBefore: bigint;
-  
       beforeEach(async () => {
-        if (delinquent) {
-          await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
+        if (criteria === 0) {
+          proof = [];
+          identifier = BigInt(tokenId);
+        } else {
+          proof = generateMerkleProofForToken(tokens, tokenId);
+          identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
-
-        expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);
-        borrowerBalanceBefore = await testErc20.balanceOf(borrower);
-        recipientBalanceBefore = await testErc20.balanceOf(recipient);
-        lenderBalanceBefore = await testErc20.balanceOf(lender);
-        lender2BalanceBefore = await testErc20.balanceOf(lender2);
-        bidderBalanceBefore = await testErc20.balanceOf(buyer);
       });
 
-      it("should revert if ask < owed", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
-        expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-        expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+      for (var i=0; i<2; i++) {
+        const delinquent = i === 1;
 
-        askOffer = {
-          side: 1,
-          maker: borrower,
-          currency: testErc20,
-          collection: testErc721,
-          tokenId: tokenId,
-          size: 1,
-          amount: amountOwed / 2n,
-          withLoan: false,
-          borrowAmount: 0
-        }
-    
-        loanOffer = {
-          lender: lender2,
-          recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          identifier: tokenId,
-          size: 1,
-          totalAmount: principal,
-          maxAmount: principal,
-          minAmount: principal,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
-        }
+        describe(`[${delinquent ? 'DELINQUENT' : 'CURRENT'}] should purchase a listed asset in a lien with a loan offer`, () => {
+          let borrowerBalanceBefore: bigint;
+          let recipientBalanceBefore: bigint;
+          let lenderBalanceBefore: bigint;
+          let lender2BalanceBefore: bigint;
+          let bidderBalanceBefore: bigint;
+      
+          beforeEach(async () => {
+            if (delinquent) {
+              await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
+            }
 
-        await expect(kettle.connect(buyer).buyInLienWithLoan(
-          lienId,
-          principal,
-          lien,
-          loanOffer,
-          askOffer
-        )).to.be.revertedWithCustomError(kettle, "InsufficientAskAmount");
-      })
+            expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);
+            borrowerBalanceBefore = await testErc20.balanceOf(borrower);
+            recipientBalanceBefore = await testErc20.balanceOf(recipient);
+            lenderBalanceBefore = await testErc20.balanceOf(lender);
+            lender2BalanceBefore = await testErc20.balanceOf(lender2);
+            bidderBalanceBefore = await testErc20.balanceOf(buyer);
+          });
 
-      it("ask > borrow > owed", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
-        expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-        expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+          it("should revert if ask < owed", async () => {
+            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
+            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        askOffer = {
-          side: 1,
-          maker: borrower,
-          currency: testErc20,
-          collection: testErc721,
-          tokenId: tokenId,
-          size: 1,
-          amount: amountOwed * 2n,
-          withLoan: false,
-          borrowAmount: 0
-        }
-    
-        loanOffer = {
-          lender: lender2,
-          recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          identifier: tokenId,
-          size: 1,
-          totalAmount: amountOwed * 2n,
-          maxAmount: amountOwed * 2n,
-          minAmount: amountOwed * 2n,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
-        }
-        
-        const borrowAmount = amountOwed * 3n / 2n;
-        const txn = await kettle.connect(buyer).buyInLienWithLoan(
-          lienId,
-          borrowAmount,
-          lien,
-          loanOffer,
-          askOffer
-        );
-        
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+            await expect(kettle.connect(buyer).buyInLienWithLoan(
+              lienId,
+              principal,
+              lien,
+              loanOffer,
+              { ...askOffer, criteria, identifier, amount: amountOwed / 2n },
+              proof,
+              proof
+            )).to.be.revertedWithCustomError(kettle, "InsufficientAskAmount");
+          })
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
+          it("ask > borrow > owed", async () => {
+            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
+            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        // log check
-        const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
-          borrowLog: extractBorrowLog(receipt!),
-          buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
-        }));
+            askOffer = {
+              ...askOffer,
+              amount: amountOwed * 2n,
+              criteria,
+              identifier
+            }
 
-        expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
-        expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
-        expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
-        expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
-        expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
-        expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
-        expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
-      });
+            loanOffer = {
+              ...loanOffer,
+              totalAmount: amountOwed * 2n,
+              maxAmount: amountOwed * 2n,
+              minAmount: amountOwed * 2n
+            }
+            
+            const borrowAmount = amountOwed * 3n / 2n;
+            const txn = await kettle.connect(buyer).buyInLienWithLoan(
+              lienId,
+              borrowAmount,
+              lien,
+              loanOffer,
+              askOffer,
+              proof,
+              proof
+            );
+            
+            // after checks
+            expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-      it("ask > owed > borrowAmount > principal + interest", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
-        expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-        expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+            expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
+            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
+            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
+            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
 
-        askOffer = {
-          side: 1,
-          maker: borrower,
-          currency: testErc20,
-          collection: testErc721,
-          tokenId: tokenId,
-          size: 1,
-          amount: amountOwed * 2n,
-          withLoan: false,
-          borrowAmount: 0
-        }
-    
-        loanOffer = {
-          lender: lender2,
-          recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          identifier: tokenId,
-          size: 1,
-          totalAmount: amountOwed * 2n,
-          maxAmount: amountOwed * 2n,
-          minAmount: amountOwed * 2n,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
-        }
-        
-        const borrowAmount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n);
-        expect(borrowAmount).to.be.lt(amountOwed);
+            // log check
+            const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
+              borrowLog: extractBorrowLog(receipt!),
+              buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
+            }));
 
-        const txn = await kettle.connect(buyer).buyInLienWithLoan(
-          lienId,
-          borrowAmount,
-          lien,
-          loanOffer,
-          askOffer
-        );
-        
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+            expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
+            expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
+            expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
+            expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
+            expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
+            expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
+            expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
+            expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+          });
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
+          it("ask > owed > borrowAmount > principal + interest", async () => {
+            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
+            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
+            askOffer = {
+              ...askOffer,
+              amount: amountOwed * 2n,
+              criteria,
+              identifier
+            }
 
-        // log check
-        const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
-          borrowLog: extractBorrowLog(receipt!),
-          buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
-        }));
+            loanOffer = {
+              ...loanOffer,
+              totalAmount: amountOwed * 2n,
+              maxAmount: amountOwed * 2n,
+              minAmount: amountOwed * 2n
+            }
+            
+            const borrowAmount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n);
+            expect(borrowAmount).to.be.lt(amountOwed);
 
-        expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
-        expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
-        expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
-        expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
-        expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
-        expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
-        expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
-      });
+            const txn = await kettle.connect(buyer).buyInLienWithLoan(
+              lienId,
+              borrowAmount,
+              lien,
+              loanOffer,
+              askOffer,
+              proof,
+              proof
+            );
+            
+            // after checks
+            expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-      it("ask > owed > principal > borrowAmount", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
-        expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-        expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+            expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
+            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
 
-        askOffer = {
-          side: 1,
-          maker: borrower,
-          currency: testErc20,
-          collection: testErc721,
-          tokenId: tokenId,
-          size: 1,
-          amount: amountOwed * 2n,
-          withLoan: false,
-          borrowAmount: 0
-        }
-    
-        loanOffer = {
-          lender: lender2,
-          recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          identifier: tokenId,
-          size: 1,
-          totalAmount: amountOwed * 2n,
-          maxAmount: amountOwed * 2n,
-          minAmount: amountOwed * 2n,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
-        }
-        
-        const borrowAmount = principal / 2n;
-        expect(borrowAmount).to.be.lt(amountOwed);
+            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
+            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
 
-        const txn = await kettle.connect(buyer).buyInLienWithLoan(
-          lienId,
-          borrowAmount,
-          lien,
-          loanOffer,
-          askOffer
-        );
-        
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+            // log check
+            const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
+              borrowLog: extractBorrowLog(receipt!),
+              buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
+            }));
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
+            expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
+            expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
+            expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
+            expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
+            expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
+            expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
+            expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
+            expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+          });
 
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
+          it("ask > owed > principal > borrowAmount", async () => {
+            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
+            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        // log check
-        const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
-          borrowLog: extractBorrowLog(receipt!),
-          buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
-        }));
+            askOffer = {
+              ...askOffer,
+              amount: amountOwed * 2n,
+              criteria,
+              identifier
+            }
 
-        expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
-        expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
-        expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
-        expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
-        expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
-        expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
-        expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
-      });
+            loanOffer = {
+              ...loanOffer,
+              totalAmount: amountOwed * 2n,
+              maxAmount: amountOwed * 2n,
+              minAmount: amountOwed * 2n
+            }
+            
+            const borrowAmount = principal / 2n;
+            expect(borrowAmount).to.be.lt(amountOwed);
 
-      it("ask > owed > borrowAmount > principal", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
-        expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-        expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+            const txn = await kettle.connect(buyer).buyInLienWithLoan(
+              lienId,
+              borrowAmount,
+              lien,
+              loanOffer,
+              askOffer,
+              proof,
+              proof
+            );
+            
+            // after checks
+            expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-        askOffer = {
-          side: 1,
-          maker: borrower,
-          currency: testErc20,
-          collection: testErc721,
-          tokenId: tokenId,
-          size: 1,
-          amount: amountOwed * 2n,
-          withLoan: false,
-          borrowAmount: 0
-        }
-    
-        loanOffer = {
-          lender: lender2,
-          recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          identifier: tokenId,
-          size: 1,
-          totalAmount: amountOwed * 2n,
-          maxAmount: amountOwed * 2n,
-          minAmount: amountOwed * 2n,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
-        }
-        
-        const borrowAmount = principal + (currentInterest / 2n) + pastInterest;
-        expect(borrowAmount).to.be.lt(amountOwed);
+            expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
+            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
 
-        const txn = await kettle.connect(buyer).buyInLienWithLoan(
-          lienId,
-          borrowAmount,
-          lien,
-          loanOffer,
-          askOffer
-        );
-        
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
+            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
+            // log check
+            const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
+              borrowLog: extractBorrowLog(receipt!),
+              buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
+            }));
 
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
-        
-        // log check
-        const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
-          borrowLog: extractBorrowLog(receipt!),
-          buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
-        }));
+            expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
+            expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
+            expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
+            expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
+            expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
+            expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
+            expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
+            expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+          });
 
-        expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
-        expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
-        expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
-        expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
-        expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
-        expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
-        expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
-      });
+          it("ask > owed > borrowAmount > principal", async () => {
+            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
+            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+
+            askOffer = {
+              ...askOffer,
+              amount: amountOwed * 2n,
+              criteria,
+              identifier
+            }
+
+            loanOffer = {
+              ...loanOffer,
+              totalAmount: amountOwed * 2n,
+              maxAmount: amountOwed * 2n,
+              minAmount: amountOwed * 2n
+            }
+            
+            const borrowAmount = principal + (currentInterest / 2n) + pastInterest;
+            expect(borrowAmount).to.be.lt(amountOwed);
+
+            const txn = await kettle.connect(buyer).buyInLienWithLoan(
+              lienId,
+              borrowAmount,
+              lien,
+              loanOffer,
+              askOffer,
+              proof,
+              proof
+            );
+            
+            // after checks
+            expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+
+            expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(askOffer.amount) - borrowAmount));
+            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(askOffer.amount) - amountOwed);
+
+            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
+            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - borrowAmount);
+            
+            // log check
+            const { borrowLog, buyInLienWithLoanLog } = await txn.wait().then(receipt => ({
+              borrowLog: extractBorrowLog(receipt!),
+              buyInLienWithLoanLog: extractBuyInLienWithLoanLog(receipt!)
+            }));
+
+            expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
+            expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
+            expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
+            expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
+            expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
+            expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
+            expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
+            expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+          });
+        });
+      }
     });
   }
 
   it("should fail if borrower is not offer maker", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: lender,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
       loanOffer,
-      askOffer
+      { ...askOffer, maker: buyer },
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "MakerIsNotBorrower");  
   });
 
   it("should fail if offer is not ask", async () => {
-
-    askOffer = {
-      side: 0,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
       loanOffer,
-      askOffer
+      { ...askOffer, side: 0 },
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "OfferNotAsk");    
   });
 
   it("should fail if collections do not match (ask and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc20, // use different address for mismatch
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
       loanOffer,
-      askOffer
+      { ...askOffer, collection: testErc20 },
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");    
   });
 
   it("should fail if collections do not match (loan offer and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc20, // use different address for mismatch
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
-      loanOffer,
-      askOffer
+      { ...loanOffer, collection: testErc20 },
+      askOffer,
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");    
   });
 
   it("should fail if currencies do not match (ask and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc721,  // use different address for mismatch
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
       loanOffer,
-      askOffer
+      { ...askOffer, currency: testErc721 },
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");    
   });
 
   it("should fail if currencies do not match (loan offer and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc721,   // use different address for mismatch
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
-      loanOffer,
-      askOffer
+      { ...loanOffer, currency: testErc721 },
+      askOffer,
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");    
   });
 
   it("should fail if sizes do not match (ask and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 2,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
       loanOffer,
-      askOffer
+      { ...askOffer, size: 2 },
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");    
   });
 
   it("should fail if sizes do not match (loan offer and lien)", async () => {
-
-    askOffer = {
-      side: 1,
-      maker: borrower,
-      currency: testErc20,
-      collection: testErc721,
-      tokenId: tokenId,
-      size: 1,
-      amount: principal * 3n / 2n,
-      withLoan: false,
-      borrowAmount: 0
-    }
-
-    loanOffer = {
-      lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      identifier: tokenId,
-      size: 2,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
       lien,
-      loanOffer,
-      askOffer
+      { ...loanOffer, size: 2 },
+      askOffer,
+      [],
+      []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");    
   });
 });
