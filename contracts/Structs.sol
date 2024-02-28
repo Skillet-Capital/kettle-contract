@@ -30,10 +30,13 @@ struct Lien {
     LienState state;
 }
 
+enum Criteria { SIMPLE, PROOF }
+
 struct LoanOffer {
     address lender;
     address recipient;
     address currency;
+    Criteria criteria;
     address collection;
     uint256 identifier;
     uint256 size;
@@ -69,7 +72,8 @@ struct MarketOffer {
     address maker;
     address currency;
     address collection;
-    uint256 tokenId;
+    Criteria criteria;
+    uint256 identifier;
     uint256 size;
     uint256 amount;
     bool withLoan;

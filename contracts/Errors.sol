@@ -7,6 +7,8 @@ error LienIsCurrent();
 error Unauthorized();
 error OnlyBorrower();
 
+error InvalidCriteria();
+
 error OfferNotAsk();
 error OfferNotBid();
 
