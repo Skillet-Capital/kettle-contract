@@ -45,13 +45,13 @@ interface IKettle {
     event Refinance(
         uint256 indexed oldLienId,
         uint256 indexed newLienId,
+        uint256 amount,
+        uint256 amountOwed,
+        uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
-        uint256 currentFee,
-        uint256 principal,
-        uint256 amountOwed,
-        uint256 amount
+        uint256 currentFee
     );
 
     event Claim(

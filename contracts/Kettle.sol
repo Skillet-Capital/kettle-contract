@@ -317,12 +317,31 @@ contract Kettle is IKettle, Initializable {
     {
         newLienId = _refinance(oldLienId, amount, lien, offer);
 
-        _distributeLoanPayments(
+        (
+            uint256 amountOwed,
+            uint256 principal,
+            uint256 pastInterest,
+            uint256 pastFee,
+            uint256 currentInterest,
+            uint256 currentFee
+        ) = _distributeLoanPayments(
             amount,
             offer.lender,
             msg.sender,
             msg.sender,
             lien
+        );
+
+        emit Refinance(
+            oldLienId,
+            newLienId,
+            amount,
+            amountOwed,
+            principal,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee
         );
     }
 
