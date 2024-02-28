@@ -15,7 +15,7 @@ import { MarketOfferStruct } from "../typechain-types/contracts/Kettle";
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 
-describe("Buy With Loan", function () {
+describe("Market Order", function () {
 
   let seller: Signer;
   let buyer: Signer;
