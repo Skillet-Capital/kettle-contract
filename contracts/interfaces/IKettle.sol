@@ -98,23 +98,6 @@ interface IKettle {
         uint256 currentFee
     );
 
-    event SellInLien(
-        uint256 indexed lienId,
-        address indexed buyer,
-        address indexed seller,
-        address currency,
-        address collection,
-        uint256 tokenId,
-        uint256 size,
-        uint256 bidAmount,
-        uint256 amountOwed,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
-    );
-
     event BuyInLienWithLoan(
         uint256 indexed oldLienId,
         uint256 indexed newLienId,
@@ -126,6 +109,35 @@ interface IKettle {
         uint256 size,
         uint256 askAmount,
         uint256 borrowAmount,
+        uint256 amountOwed,
+        uint256 principal,
+        uint256 pastInterest,
+        uint256 pastFee,
+        uint256 currentInterest,
+        uint256 currentFee
+    );
+
+    event SellWithLoan(
+        uint256 indexed lienId,
+        address indexed buyer,
+        address indexed seller,
+        address currency,
+        address collection,
+        uint256 tokenId,
+        uint256 size,
+        uint256 amount,
+        uint256 borrowAmount
+    );
+
+    event SellInLien(
+        uint256 indexed lienId,
+        address indexed buyer,
+        address indexed seller,
+        address currency,
+        address collection,
+        uint256 tokenId,
+        uint256 size,
+        uint256 bidAmount,
         uint256 amountOwed,
         uint256 principal,
         uint256 pastInterest,
