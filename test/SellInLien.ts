@@ -16,7 +16,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, MarketOfferStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -63,16 +63,13 @@ describe("Sell In Lien", function () {
   let lien: LienStruct;
 
   let bidOffer: MarketOfferStruct;
+  let terms: LoanOfferTermsStruct;
+  let offerTerms: MarketOfferTermsStruct;
+  let collateral: CollateralStruct;
 
   beforeEach(async () => {
-    const offer = {
-      lender: lender,
-      recipient: recipient,
+    terms = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       totalAmount: principal,
       maxAmount: principal,
       minAmount: principal,
@@ -83,21 +80,40 @@ describe("Sell In Lien", function () {
       gracePeriod: MONTH_SECONDS
     }
 
+    collateral = {
+      collection: testErc721,
+      criteria: 0,
+      identifier: tokenId,
+      size: 1
+    }
+
+    const offer = {
+      lender,
+      recipient,
+      terms,
+      collateral,
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
+    }
+
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
-    bidOffer = {
-      side: 0,
-      maker: offerMaker,
+    offerTerms = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       amount: principal,
       withLoan: false,
       borrowAmount: 0
+    }
+
+    bidOffer = {
+      side: 0,
+      maker: offerMaker,
+      terms: offerTerms,
+      collateral: { ...collateral },
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
   })
 
@@ -114,6 +130,9 @@ describe("Sell In Lien", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
+
+        bidOffer.collateral.criteria = criteria;
+        bidOffer.collateral.identifier = identifier;
       });
 
       for (var i = 0; i < 2; i++) {
@@ -144,10 +163,11 @@ describe("Sell In Lien", function () {
 
             const bidAmount = principal * 2n;
 
+            bidOffer.terms.amount = bidAmount;
             const txn = await kettle.connect(borrower).sellInLien(
               lienId,
               lien,
-              { ...bidOffer, amount: bidAmount, criteria, identifier },
+              bidOffer,
               proof
             );
 
@@ -188,10 +208,11 @@ describe("Sell In Lien", function () {
 
             const bidAmount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n);
 
+            bidOffer.terms.amount = bidAmount;
             const txn = await kettle.connect(borrower).sellInLien(
               lienId,
               lien,
-              { ...bidOffer, amount: bidAmount, criteria, identifier },
+              bidOffer,
               proof
             );
 
@@ -231,10 +252,11 @@ describe("Sell In Lien", function () {
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
             const bidAmount = principal + pastInterest + (currentInterest / 2n);
+            bidOffer.terms.amount = bidAmount;
             const txn = await kettle.connect(borrower).sellInLien(
               lienId,
               lien,
-              { ...bidOffer, amount: bidAmount, criteria, identifier },
+              bidOffer,
               proof
             );
 
@@ -274,10 +296,11 @@ describe("Sell In Lien", function () {
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
             const bidAmount = principal / 2n;
+            bidOffer.terms.amount = bidAmount;
             const txn = await kettle.connect(borrower).sellInLien(
               lienId,
               lien,
-              { ...bidOffer, amount: bidAmount, criteria, identifier },
+              bidOffer,
               proof
             );
 
@@ -333,28 +356,32 @@ describe("Sell In Lien", function () {
   });
 
   it('should fail if collections do not match', async () => {
+    bidOffer.collateral.collection = testErc20;
     await expect(kettle.connect(borrower).sellInLien(
       lienId,
       lien,
-      { ...bidOffer, collection: testErc20 },
+      bidOffer,
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");
   })
 
   it('should fail if currencies do not match', async () => {
+
+    bidOffer.terms.currency = testErc721;
     await expect(kettle.connect(borrower).sellInLien(
       lienId,
       lien,
-      { ...bidOffer, currency: testErc721 },
+      bidOffer,
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");
   })
 
   it('should fail if sizes do not match', async () => {
+    bidOffer.collateral.size = 2; 
     await expect(kettle.connect(borrower).sellInLien(
       lienId,
       lien,
-      { ...bidOffer, size: 2 },
+      bidOffer,
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");
   })
