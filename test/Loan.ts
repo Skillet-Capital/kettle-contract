@@ -16,7 +16,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -75,14 +75,8 @@ describe("Loan", function () {
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
 
-        const offer = {
-          lender: lender,
-          recipient: recipient,
+        const loanOfferTerms: LoanOfferTermsStruct = {
           currency: testErc20,
-          collection: testErc721,
-          criteria,
-          identifier,
-          size: 1,
           totalAmount: principal,
           maxAmount: principal,
           minAmount: principal,
@@ -93,7 +87,23 @@ describe("Loan", function () {
           gracePeriod: MONTH_SECONDS
         }
     
-        const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, proof);
+        const collateral: CollateralStruct = {
+          collection: testErc721,
+          criteria: 0,
+          identifier: tokenId,
+          size: 1
+        }
+
+        const loanOffer = {
+          lender: lender,
+          recipient: recipient,
+          terms: loanOfferTerms,
+          collateral,
+          salt: randomBytes(),
+          expiration: await time.latest() + DAY_SECONDS
+        }
+    
+        const txn = await kettle.connect(borrower).borrow(loanOffer, principal, 1, borrower, proof);
         ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
       })
     
