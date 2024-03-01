@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
-import { signMarketOffer } from "./helpers/signatures";
+import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
 import { extractBuyInLienLog, extractBorrowLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
@@ -97,7 +97,9 @@ describe("Buy In Lien", function () {
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const txn = await kettle.connect(borrower).borrow(loanOffer, principal, tokenId, borrower, []);
+    const signature = await signLoanOffer(kettle, lender, loanOffer);
+
+    const txn = await kettle.connect(borrower).borrow(loanOffer, principal, tokenId, borrower, signature, []);
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 

@@ -8,7 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
-import { signMarketOffer } from "./helpers/signatures";
+import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
 import { extractBorrowLog, extractSellInLienLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
 
@@ -99,7 +99,9 @@ describe("Sell In Lien", function () {
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
+    const signature = await signLoanOffer(kettle, lender, offer);
+
+    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
