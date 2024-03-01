@@ -4,6 +4,7 @@ import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
+import { signMarketOffer } from "./helpers/signatures";
 import { extractMarketOrderLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
@@ -94,6 +95,8 @@ describe("Market Order", function () {
           expiration: await time.latest() + DAY_SECONDS
         }
 
+        const signature = await signMarketOffer(kettle, buyer, bidOffer);
+
         // before checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
         const sellerBalance_before = await testErc20.balanceOf(seller);
@@ -102,6 +105,7 @@ describe("Market Order", function () {
         const txn = await kettle.connect(seller).marketOrder(
           tokenId,
           bidOffer,
+          signature,
           proof
         );
 
@@ -135,10 +139,13 @@ describe("Market Order", function () {
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
+
+        const signature = await signMarketOffer(kettle, buyer, bidOffer);
   
         await expect(kettle.connect(seller).marketOrder(
           tokenId,
           bidOffer,
+          signature,
           proof
         )).to.be.revertedWithCustomError(kettle, "BidRequiresLoan");
       });
@@ -152,6 +159,8 @@ describe("Market Order", function () {
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
+
+        const signature = await signMarketOffer(kettle, seller, askOffer);
   
         // before checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
@@ -161,6 +170,7 @@ describe("Market Order", function () {
         const txn = await kettle.connect(buyer).marketOrder(
           tokenId,
           askOffer,
+          signature,
           proof
         );
   
