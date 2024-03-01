@@ -1,16 +1,18 @@
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+
 import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { extractMarketOrderLog } from './helpers/events';
-import { generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
+import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { MarketOfferStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -52,6 +54,9 @@ describe("Market Order", function () {
 
   for (const criteria of [0, 1]) {
     describe(`criteria: ${criteria == 0 ? "SIMPLE" : "PROOF"}`, () => {
+      let terms: MarketOfferTermsStruct;
+      let collateral: CollateralStruct;
+
       let proof: string[];
       let identifier: bigint;
 
@@ -63,20 +68,30 @@ describe("Market Order", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
+
+        collateral = {
+          collection: testErc721,
+          criteria,
+          identifier,
+          size: 1
+        }
+
+        terms = {
+          currency: testErc20,
+          amount: principal,
+          withLoan: false,
+          borrowAmount: 0
+        }
       });
 
       it("should sell an asset into a bid", async () => {
         bidOffer = {
           side: 0,
           maker: buyer,
-          currency: testErc20,
-          collection: testErc721,
-          criteria,
-          identifier,
-          size: 1,
-          amount: principal,
-          withLoan: false,
-          borrowAmount: 0
+          terms: terms,
+          collateral: collateral,
+          salt: randomBytes(),
+          expiration: await time.latest() + DAY_SECONDS
         }
 
         // before checks
@@ -92,8 +107,8 @@ describe("Market Order", function () {
 
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.terms.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.terms.amount));
 
         // log checks
         const { marketOrderLog } = await txn.wait().then(receipt => ({
@@ -110,17 +125,15 @@ describe("Market Order", function () {
       });
 
       it("should fail to sell an asset into a bid requiring a loan", async () => {  
+        terms.withLoan = true;
+
         bidOffer = {
           side: 0,
           maker: buyer,
-          currency: testErc20,
-          collection: testErc721,
-          criteria,
-          identifier: identifier,
-          size: 1,
-          amount: principal,
-          withLoan: true,
-          borrowAmount: 0
+          terms: terms,
+          collateral: collateral,
+          salt: randomBytes(),
+          expiration: await time.latest() + DAY_SECONDS
         }
   
         await expect(kettle.connect(seller).marketOrder(
@@ -130,18 +143,14 @@ describe("Market Order", function () {
         )).to.be.revertedWithCustomError(kettle, "BidRequiresLoan");
       });
 
-      it("should buy an asset with an ask", async () => {  
+      it("should buy an asset with an ask", async () => { 
         askOffer = {
           side: 1,
           maker: seller,
-          currency: testErc20,
-          collection: testErc721,
-          criteria,
-          identifier,
-          size: 1,
-          amount: principal,
-          withLoan: false,
-          borrowAmount: 0
+          terms: terms,
+          collateral: collateral,
+          salt: randomBytes(),
+          expiration: await time.latest() + DAY_SECONDS
         }
   
         // before checks
@@ -157,8 +166,8 @@ describe("Market Order", function () {
   
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.amount));
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.terms.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.terms.amount));
   
         // log checks
         const { marketOrderLog } = await txn.wait().then(receipt => ({

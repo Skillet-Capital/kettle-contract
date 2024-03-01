@@ -16,7 +16,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -64,6 +64,8 @@ describe("Refinance", function () {
   let lien: LienStruct;
 
   let refinanceOffer: LoanOfferStruct;
+  let terms: LoanOfferTermsStruct;
+  let collateral: CollateralStruct;
 
   let borrowerBalanceBefore: bigint;
   let recipientBalanceBefore: bigint;
@@ -71,14 +73,8 @@ describe("Refinance", function () {
   let lender2BalanceBefore: bigint;
 
   beforeEach(async () => {
-    const offer = {
-      lender: lender,
-      recipient: recipient,
+    terms = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       totalAmount: principal,
       maxAmount: principal,
       minAmount: principal,
@@ -87,6 +83,22 @@ describe("Refinance", function () {
       rate: "1000",
       fee: "200",
       gracePeriod: MONTH_SECONDS
+    }
+
+    collateral = {
+      collection: testErc721,
+      criteria: 0,
+      identifier: tokenId,
+      size: 1
+    }
+
+    const offer = {
+      lender: lender,
+      recipient: recipient,
+      terms,
+      collateral,
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
@@ -115,19 +127,10 @@ describe("Refinance", function () {
         refinanceOffer = {
           lender: lender2,
           recipient: recipient,
-          currency: testErc20,
-          collection: testErc721,
-          criteria,
-          identifier,
-          size: 1,
-          totalAmount: principal,
-          maxAmount: principal,
-          minAmount: principal,
-          tenor: DAY_SECONDS * 365,
-          period: MONTH_SECONDS,
-          rate: "1000",
-          fee: "200",
-          gracePeriod: MONTH_SECONDS
+          terms,
+          collateral,
+          salt: randomBytes(),
+          expiration: await time.latest() + DAY_SECONDS
         }
       });
 

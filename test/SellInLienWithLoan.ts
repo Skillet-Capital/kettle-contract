@@ -16,7 +16,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, MarketOfferStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -68,15 +68,14 @@ describe("Sell In Lien With Loan", function () {
   let loanOffer: LoanOfferStruct;
   let bidOffer: MarketOfferStruct;
 
+  let loanOfferTerms: LoanOfferTermsStruct;
+  let marketOfferTerms: MarketOfferTermsStruct;
+
+  let collateral: CollateralStruct;
+
   beforeEach(async () => {
-    const offer = {
-      lender: lender,
-      recipient: recipient,
+    loanOfferTerms = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       totalAmount: principal,
       maxAmount: principal,
       minAmount: principal,
@@ -85,41 +84,51 @@ describe("Sell In Lien With Loan", function () {
       rate: "1000",
       fee: "200",
       gracePeriod: MONTH_SECONDS
+    }
+
+    collateral = {
+      collection: testErc721,
+      criteria: 0,
+      identifier: tokenId,
+      size: 1
+    }
+
+    const offer = {
+      lender,
+      recipient,
+      terms: loanOfferTerms,
+      collateral,
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
-    bidOffer = {
-      side: 0,
-      maker: buyer,
+    marketOfferTerms = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       amount: principal,
       withLoan: true,
       borrowAmount: principal
     }
 
+    bidOffer = {
+      side: 0,
+      maker: buyer,
+      terms: marketOfferTerms,
+      collateral: { ...collateral },
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
+    }
+
     loanOffer = {
       lender: lender2,
-      recipient: recipient,
-      currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
+      recipient,
+      terms: loanOfferTerms,
+      collateral: { ...collateral},
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
   });
 
@@ -136,6 +145,12 @@ describe("Sell In Lien With Loan", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
+
+        loanOffer.collateral.criteria = criteria;
+        loanOffer.collateral.identifier = identifier;
+
+        bidOffer.collateral.criteria = criteria;
+        bidOffer.collateral.identifier = identifier;
       });
 
   for (var i=0; i<2; i++) {
@@ -166,14 +181,7 @@ describe("Sell In Lien With Loan", function () {
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        bidOffer = {
-          ...bidOffer,
-          amount: amountOwed * 2n,
-          borrowAmount: principal,
-          identifier,
-          criteria
-        }
-
+        bidOffer.terms.amount = amountOwed * 2n;
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
@@ -186,27 +194,20 @@ describe("Sell In Lien With Loan", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.amount) - amountOwed);
+        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.borrowAmount));
+        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.terms.borrowAmount));
       })
 
       it("amount owed > bid > principal + interest", async () => {
         const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-    
-        bidOffer = {
-          ...bidOffer,
-          amount: principal + currentInterest + pastInterest + pastFee + (currentFee / 2n),
-          borrowAmount: principal,
-          identifier,
-          criteria
-        }
-
+        
+        bidOffer.terms.amount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n)
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
@@ -219,27 +220,20 @@ describe("Sell In Lien With Loan", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.amount) - amountOwed);
+        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.borrowAmount));
+        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.terms.borrowAmount));
       });
 
       it("amount owed > bid > principal", async () => {
         const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-    
-        bidOffer = {
-          ...bidOffer,
-          amount: principal + (currentInterest / 2n) + pastInterest,
-          borrowAmount: principal,
-          identifier,
-          criteria
-        }
-
+        
+        bidOffer.terms.amount = principal + (currentInterest / 2n) + pastInterest
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
@@ -252,12 +246,12 @@ describe("Sell In Lien With Loan", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.amount) - amountOwed);
+        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.borrowAmount));
+        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.terms.borrowAmount));
       });
 
       it("amount owed > principal > bid", async () => {
@@ -265,14 +259,8 @@ describe("Sell In Lien With Loan", function () {
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
     
-        bidOffer = {
-          ...bidOffer,
-          amount: principal / 2n,
-          borrowAmount: principal / 3n,
-          identifier,
-          criteria
-        }
-
+        bidOffer.terms.amount = principal / 2n;
+        bidOffer.terms.borrowAmount = principal / 3n;
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
@@ -285,25 +273,21 @@ describe("Sell In Lien With Loan", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
-        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.amount) - BigInt(bidOffer.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.amount) - amountOwed);
+        expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.borrowAmount));
+        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.terms.borrowAmount));
       });
 
       it("amount owed > principal = bid amount = borrow amount", async () => {
         const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-        
-        bidOffer = {
-          ...bidOffer,
-          amount: principal,
-          borrowAmount: principal
-        }
 
+        bidOffer.terms.amount = principal;
+        bidOffer.terms.borrowAmount = principal;
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
@@ -317,11 +301,11 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore);
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
-        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.borrowAmount));
+        expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - BigInt(bidOffer.terms.borrowAmount));
       });
     });
   }
@@ -351,21 +335,23 @@ describe("Sell In Lien With Loan", function () {
   });
 
   it("should fail if collections do not match (ask and lien)", async () => {
+    bidOffer.collateral.collection = testErc20;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
-      { ...bidOffer, collection: testErc20 },
+      bidOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");    
   });
 
   it("should fail if collections do not match (loan offer and lien)", async () => {
+    loanOffer.collateral.collection = testErc20;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
-      { ...loanOffer, collection: testErc20 },
+      loanOffer,
       bidOffer,
       [],
       []
@@ -373,21 +359,23 @@ describe("Sell In Lien With Loan", function () {
   });
 
   it("should fail if currencies do not match (ask and lien)", async () => {
+    bidOffer.terms.currency = testErc721;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
-      { ...bidOffer, currency: testErc721 },
+      bidOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");    
   });
 
   it("should fail if currencies do not match (loan offer and lien)", async () => {
+    loanOffer.terms.currency = testErc721;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
-      { ...loanOffer, currency: testErc721 },
+      loanOffer,
       bidOffer,
       [],
       []
@@ -395,21 +383,23 @@ describe("Sell In Lien With Loan", function () {
   });
 
   it("should fail if sizes do not match (ask and lien)", async () => {
+    bidOffer.collateral.size = 2;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
-      { ...bidOffer, size: 2 },
+      bidOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");    
   });
 
   it("should fail if sizes do not match (loan offer and lien)", async () => {
+    loanOffer.collateral.size = 2;
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
-      { ...loanOffer, size: 2 },
+      loanOffer,
       bidOffer,
       [],
       []

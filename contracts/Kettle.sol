@@ -14,9 +14,7 @@ import { FixedInterest } from "./models/FixedInterest.sol";
 import { Transfer } from "./Transfer.sol";
 import { Distributions } from "./Distributions.sol";
 
-import "hardhat/console.sol";
-
-contract Kettle is IKettle, Initializable {
+contract Kettle is IKettle, OfferController, Initializable {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
@@ -63,12 +61,12 @@ contract Kettle is IKettle, Initializable {
     ) public returns (uint256 lienId){
         if (borrower == address(0)) borrower = msg.sender;
 
-        _verifyCollateral(offer.criteria, offer.identifier, tokenId, proof);
+        _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
 
         lienId = _borrow(offer, amount, tokenId, borrower);
 
-        Transfer.transferToken(offer.collection, msg.sender, address(this), tokenId, offer.size);
-        Transfer.transferCurrency(offer.currency, offer.lender, borrower, amount);
+        Transfer.transferToken(offer.collateral.collection, msg.sender, address(this), tokenId, offer.collateral.size);
+        Transfer.transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
     }
 
     function _borrow(
@@ -82,16 +80,16 @@ contract Kettle is IKettle, Initializable {
             offer.lender,
             offer.recipient,
             borrower,
-            offer.currency,
-            offer.collection,
+            offer.terms.currency,
+            offer.collateral.collection,
             tokenId,
-            offer.size,
+            offer.collateral.size,
             amount,
-            offer.rate,
-            offer.fee,
-            offer.period,
-            offer.gracePeriod,
-            offer.tenor,
+            offer.terms.rate,
+            offer.terms.fee,
+            offer.terms.period,
+            offer.terms.gracePeriod,
+            offer.terms.tenor,
             block.timestamp,
             LienState({
                 paidThrough: block.timestamp,
@@ -102,6 +100,8 @@ contract Kettle is IKettle, Initializable {
         unchecked {
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
+
+        // _takeLoanOffer(offer, lien, lienId);
 
         emit Borrow(
             lienId,
@@ -128,8 +128,8 @@ contract Kettle is IKettle, Initializable {
     ) public returns (uint256 lienId) {
         lienId = _loan(offer);
 
-        Transfer.transferToken(offer.collection, offer.borrower, address(this), offer.tokenId, offer.size);
-        Transfer.transferCurrency(offer.currency, msg.sender, offer.borrower, offer.amount);
+        Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
+        Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
 
     function _loan(
@@ -140,26 +140,28 @@ contract Kettle is IKettle, Initializable {
             msg.sender,
             offer.recipient,
             offer.borrower,
-            offer.currency,
-            offer.collection,
-            offer.tokenId,
-            offer.size,
-            offer.amount,
-            offer.rate,
-            offer.fee,
-            offer.period,
-            offer.gracePeriod,
-            offer.tenor,
+            offer.terms.currency,
+            offer.collateral.collection,
+            offer.collateral.identifier,
+            offer.collateral.size,
+            offer.terms.amount,
+            offer.terms.rate,
+            offer.terms.fee,
+            offer.terms.period,
+            offer.terms.gracePeriod,
+            offer.terms.tenor,
             block.timestamp,
             LienState({
                 paidThrough: block.timestamp,
-                amountOwed: offer.amount
+                amountOwed: offer.terms.amount
             })
         );
 
         unchecked {
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
+
+        // _takeBorrowOffer(offer, lienId);
 
         emit Borrow(
             lienId,
@@ -305,7 +307,7 @@ contract Kettle is IKettle, Initializable {
     {
         newLienId = _borrow(offer, amount, lien.tokenId, msg.sender);
 
-        _verifyCollateral(offer.criteria, offer.identifier, lien.tokenId, proof);
+        _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, lien.tokenId, proof);
 
         (
             uint256 amountOwed,
@@ -421,37 +423,38 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata proof
      ) public {
 
-        _verifyCollateral(offer.criteria, offer.identifier, tokenId, proof);
+        _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
+        // _takeMarketOffer(offer);
 
         if (offer.side == Side.BID) {
-            if (offer.withLoan) {
+            if (offer.terms.withLoan) {
                 revert BidRequiresLoan();
             }
-            Transfer.transferToken(offer.collection, msg.sender, offer.maker, tokenId, offer.size);
-            Transfer.transferCurrency(offer.currency, offer.maker, msg.sender, offer.amount);
+            Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
+            Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, offer.terms.amount);
             
             emit MarketOrder(
                 offer.maker,
                 msg.sender,
-                offer.currency,
-                offer.collection,
+                offer.terms.currency,
+                offer.collateral.collection,
                 tokenId,
-                offer.size,
-                offer.amount
+                offer.collateral.size,
+                offer.terms.amount
             );
 
         } else {
-            Transfer.transferToken(offer.collection, offer.maker, msg.sender, tokenId, offer.size);
-            Transfer.transferCurrency(offer.currency, msg.sender, offer.maker, offer.amount);
+            Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
+            Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, offer.terms.amount);
             
             emit MarketOrder(
                 msg.sender,
                 offer.maker,
-                offer.currency,
-                offer.collection,
+                offer.terms.currency,
+                offer.collateral.collection,
                 tokenId,
-                offer.size,
-                offer.amount
+                offer.collateral.size,
+                offer.terms.amount
             );
         }
     }
@@ -470,48 +473,49 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata askProof
     ) public returns (uint256 lienId) {
 
-        _verifyCollateral(loanOffer.criteria, loanOffer.identifier, tokenId, loanProof);
-        _verifyCollateral(askOffer.criteria, askOffer.identifier, tokenId, askProof);
+        _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, tokenId, loanProof);
+        _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, tokenId, askProof);
+        // _takeMarketOffer(askOffer);
 
         if (askOffer.side != Side.ASK) {
             revert OfferNotAsk();
         }
 
-        if (loanOffer.collection != askOffer.collection) {
+        if (loanOffer.collateral.collection != askOffer.collateral.collection) {
             revert CollectionMismatch();
         }
 
-        if (loanOffer.currency != askOffer.currency) {
+        if (loanOffer.terms.currency != askOffer.terms.currency) {
             revert CurrencyMismatch();
         }
 
-        if (loanOffer.size != askOffer.size) {
+        if (loanOffer.collateral.size != askOffer.collateral.size) {
             revert SizeMismatch();
         }
 
-        uint256 _borrowAmount = Math.min(amount, askOffer.amount);
+        uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
 
         // start a lien
         lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender);
 
         // transfer principal to seller
-        Transfer.transferCurrency(loanOffer.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
+        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
 
         // transfer rest from buyer to seller
-        Transfer.transferCurrency(loanOffer.currency, msg.sender, askOffer.maker, askOffer.amount - _borrowAmount);
+        Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collection, askOffer.maker, address(this), tokenId, askOffer.size);
+        Transfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
 
         emit BuyWithLoan(
             lienId,
             msg.sender,
             askOffer.maker,
-            askOffer.currency,
-            askOffer.collection,
+            askOffer.terms.currency,
+            askOffer.collateral.collection,
             tokenId,
-            askOffer.size,
-            askOffer.amount,
+            askOffer.collateral.size,
+            askOffer.terms.amount,
             _borrowAmount
         );
     }
@@ -529,57 +533,58 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata bidProof
     ) public returns (uint256 lienId) {
 
-        _verifyCollateral(loanOffer.criteria, loanOffer.identifier, tokenId, loanProof);
-        _verifyCollateral(bidOffer.criteria, bidOffer.identifier, tokenId, bidProof);
+        _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, tokenId, loanProof);
+        _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, tokenId, bidProof);
+        // _takeMarketOffer(bidOffer);
 
         if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
         }
 
-        if (!bidOffer.withLoan) {
+        if (!bidOffer.terms.withLoan) {
             revert BidNotWithLoan();
         }
 
-        if (bidOffer.amount < bidOffer.borrowAmount) {
+        if (bidOffer.terms.amount < bidOffer.terms.borrowAmount) {
             revert BidCannotBorrow();
         }
 
-        if (loanOffer.collection != bidOffer.collection) {
+        if (loanOffer.collateral.collection != bidOffer.collateral.collection) {
             revert CollectionMismatch();
         }
 
-        if (loanOffer.currency != bidOffer.currency) {
+        if (loanOffer.terms.currency != bidOffer.terms.currency) {
             revert CurrencyMismatch();
         }
 
-        if (loanOffer.size != bidOffer.size) {
+        if (loanOffer.collateral.size != bidOffer.collateral.size) {
             revert SizeMismatch();
         }
 
-        lienId = _borrow(loanOffer, bidOffer.borrowAmount, tokenId, bidOffer.maker);
+        lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker);
 
         // transfer borrow amount to this
-        Transfer.transferCurrency(loanOffer.currency, loanOffer.lender, address(this), bidOffer.borrowAmount);
+        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
 
         // transfer rest of bid from buyer to this
-        Transfer.transferCurrency(bidOffer.currency, bidOffer.maker, address(this), bidOffer.amount - bidOffer.borrowAmount);
+        Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // transfer all currency to seller
-        Transfer.transferCurrency(bidOffer.currency, address(this), msg.sender, bidOffer.amount);
+        Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, bidOffer.terms.amount);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collection, msg.sender, address(this), tokenId, bidOffer.size);
+        Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, bidOffer.collateral.size);
 
         emit SellWithLoan(
             lienId,
             bidOffer.maker,
             msg.sender,
-            bidOffer.currency,
-            bidOffer.collection,
+            bidOffer.terms.currency,
+            bidOffer.collateral.collection,
             tokenId,
-            bidOffer.size,
-            bidOffer.amount,
-            bidOffer.borrowAmount
+            bidOffer.collateral.size,
+            bidOffer.terms.amount,
+            bidOffer.terms.borrowAmount
         );
     }
 
@@ -596,7 +601,8 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
 
-        _verifyCollateral(askOffer.criteria, askOffer.identifier, lien.tokenId, proof);
+        _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, proof);
+        // _takeMarketOffer(askOffer);
 
         if (lien.borrower != askOffer.maker) {
             revert MakerIsNotBorrower();
@@ -606,15 +612,15 @@ contract Kettle is IKettle, Initializable {
             revert OfferNotAsk();
         }
 
-        if (askOffer.collection != lien.collection) {
+        if (askOffer.collateral.collection != lien.collection) {
             revert CollectionMismatch();
         }
 
-        if (askOffer.currency != lien.currency) {
+        if (askOffer.terms.currency != lien.currency) {
             revert CurrencyMismatch();
         }
 
-        if (askOffer.size != lien.size) {
+        if (askOffer.collateral.size != lien.size) {
             revert SizeMismatch();
         }
 
@@ -627,13 +633,13 @@ contract Kettle is IKettle, Initializable {
         ) = FixedInterest.computeAmountOwed(lien);
 
         // ask amount must be greater than amount owed
-        if (askOffer.amount < amountOwed) {
+        if (askOffer.terms.amount < amountOwed) {
             revert InsufficientAskAmount();
         }
 
         Distributions.distributeLoanPayments(
             lien.currency, 
-            askOffer.amount,            // distribute ask amount
+            askOffer.terms.amount,      // distribute ask amount
             amountOwed, 
             lien.state.amountOwed, 
             pastInterest, 
@@ -662,11 +668,11 @@ contract Kettle is IKettle, Initializable {
             lienId,
             msg.sender,
             lien.borrower,
-            askOffer.currency,
-            askOffer.collection,
+            askOffer.terms.currency,
+            askOffer.collateral.collection,
             lien.tokenId,
             lien.size,
-            askOffer.amount,
+            askOffer.terms.amount,
             amountOwed,
             lien.state.amountOwed,
             pastInterest,
@@ -689,21 +695,22 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) {
 
-        _verifyCollateral(bidOffer.criteria, bidOffer.identifier, lien.tokenId, proof);
+        _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, proof);
+        // _takeMarketOffer(bidOffer);
 
         if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
         }
 
-        if (bidOffer.collection != lien.collection) {
+        if (bidOffer.collateral.collection != lien.collection) {
             revert CollectionMismatch();
         }
 
-        if (bidOffer.currency != lien.currency) {
+        if (bidOffer.terms.currency != lien.currency) {
             revert CurrencyMismatch();
         }
 
-        if (bidOffer.size != lien.size) {
+        if (bidOffer.collateral.size != lien.size) {
             revert SizeMismatch();
         }
 
@@ -717,7 +724,7 @@ contract Kettle is IKettle, Initializable {
         
         Distributions.distributeLoanPayments(
             lien.currency,
-            bidOffer.amount,                // distribute bid amount
+            bidOffer.terms.amount,          // distribute bid amount
             amountOwed,
             lien.state.amountOwed,
             pastInterest,
@@ -750,7 +757,7 @@ contract Kettle is IKettle, Initializable {
             lien.collection, 
             lien.tokenId, 
             lien.size, 
-            bidOffer.amount, 
+            bidOffer.terms.amount, 
             amountOwed, 
             lien.state.amountOwed, 
             pastInterest, 
@@ -770,8 +777,9 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata askProof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) returns (uint256 newLienId) {
 
-        _verifyCollateral(loanOffer.criteria, loanOffer.identifier, lien.tokenId, loanProof);
-        _verifyCollateral(askOffer.criteria, askOffer.identifier, lien.tokenId, askProof);
+        _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, lien.tokenId, loanProof);
+        _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, askProof);
+        // _takeMarketOffer(askOffer);
 
         if (askOffer.maker != lien.borrower) {
             revert MakerIsNotBorrower();
@@ -782,22 +790,22 @@ contract Kettle is IKettle, Initializable {
         }
 
         if (
-            askOffer.collection != lien.collection 
-            || loanOffer.collection != lien.collection
+            askOffer.collateral.collection != lien.collection 
+            || loanOffer.collateral.collection != lien.collection
         ) {
             revert CollectionMismatch();
         }
 
         if (
-            askOffer.currency != lien.currency
-            || loanOffer.currency != lien.currency
+            askOffer.terms.currency != lien.currency
+            || loanOffer.terms.currency != lien.currency
         ) {
             revert CurrencyMismatch();
         }
 
         if (
-            askOffer.size != lien.size
-            || loanOffer.size != lien.size
+            askOffer.collateral.size != lien.size
+            || loanOffer.collateral.size != lien.size
         ) {
             revert SizeMismatch();
         }
@@ -810,12 +818,12 @@ contract Kettle is IKettle, Initializable {
             uint256 currentFee
         ) = FixedInterest.computeAmountOwed(lien);
 
-        if (askOffer.amount < amountOwed) {
+        if (askOffer.terms.amount < amountOwed) {
             revert InsufficientAskAmount();
         }
 
         // start new loan
-        uint256 _borrowAmount = Math.min(amount, askOffer.amount);
+        uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender);
 
         Distributions.distributeLoanPayments(
@@ -837,7 +845,7 @@ contract Kettle is IKettle, Initializable {
         // remaining amount owed by buyer is the diff between ask and max of borrow or amount owed
         // buyer already pays off lender if borrow amount is less than amount owed
         // if borrow amount is greater than amount owed, then buyer pays rest
-        uint256 remainingAmountOwed = askOffer.amount - Math.max(_borrowAmount, amountOwed);
+        uint256 remainingAmountOwed = askOffer.terms.amount - Math.max(_borrowAmount, amountOwed);
 
         // transfer rest of amount from buyer to seller (ask must be greater than amount owed)
         Transfer.transferCurrency(
@@ -854,11 +862,11 @@ contract Kettle is IKettle, Initializable {
             newLienId,
             msg.sender,
             lien.borrower,
-            askOffer.currency,
-            askOffer.collection,
+            askOffer.terms.currency,
+            askOffer.collateral.collection,
             lien.tokenId,
             lien.size,
-            askOffer.amount,
+            askOffer.terms.amount,
             _borrowAmount,
             amountOwed,
             lien.state.amountOwed,
@@ -878,50 +886,51 @@ contract Kettle is IKettle, Initializable {
         bytes32[] calldata bidProof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) returns (uint256 newLienId) {
 
-        _verifyCollateral(loanOffer.criteria, loanOffer.identifier, lien.tokenId, loanProof);
-        _verifyCollateral(bidOffer.criteria, bidOffer.identifier, lien.tokenId, bidProof);
+        _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, lien.tokenId, loanProof);
+        _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, bidProof);
+        // _takeMarketOffer(bidOffer);
 
         if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
         }
 
-        if (!bidOffer.withLoan) {
+        if (!bidOffer.terms.withLoan) {
             revert BidNotWithLoan();
         }
 
-        if (bidOffer.amount < bidOffer.borrowAmount) {
+        if (bidOffer.terms.amount < bidOffer.terms.borrowAmount) {
             revert BidCannotBorrow();
         }
 
         if (
-            bidOffer.collection != lien.collection
-            || loanOffer.collection != lien.collection
+            bidOffer.collateral.collection != lien.collection
+            || loanOffer.collateral.collection != lien.collection
         ) {
             revert CollectionMismatch();
         }
 
         if (
-            bidOffer.currency != lien.currency
-            || loanOffer.currency != lien.currency
+            bidOffer.terms.currency != lien.currency
+            || loanOffer.terms.currency != lien.currency
         ) {
             revert CurrencyMismatch();
         }
 
         if (
-            bidOffer.size != lien.size
-            || loanOffer.size != lien.size
+            bidOffer.collateral.size != lien.size
+            || loanOffer.collateral.size != lien.size
         ) {
             revert SizeMismatch();
         }
 
-        newLienId = _borrow(loanOffer, bidOffer.borrowAmount, lien.tokenId, msg.sender);
+        newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, msg.sender);
 
         // transfer borrow amount to this
         Transfer.transferCurrency(
             lien.currency, 
             loanOffer.lender, 
             address(this), 
-            bidOffer.borrowAmount
+            bidOffer.terms.borrowAmount
         );
 
         // transfer rest of bid from buyer to this
@@ -929,7 +938,7 @@ contract Kettle is IKettle, Initializable {
             lien.currency, 
             bidOffer.maker, 
             address(this), 
-            bidOffer.amount - bidOffer.borrowAmount
+            bidOffer.terms.amount - bidOffer.terms.borrowAmount
         );
 
         (
@@ -942,7 +951,7 @@ contract Kettle is IKettle, Initializable {
 
         Distributions.distributeLoanPayments(
             lien.currency,
-            bidOffer.amount,            // distribute bid amount
+            bidOffer.terms.amount,      // distribute bid amount
             amountOwed,
             lien.state.amountOwed,
             pastInterest,
@@ -967,8 +976,8 @@ contract Kettle is IKettle, Initializable {
             lien.collection, 
             lien.tokenId, 
             lien.size, 
-            bidOffer.amount,
-            bidOffer.borrowAmount, 
+            bidOffer.terms.amount,
+            bidOffer.terms.borrowAmount, 
             amountOwed, 
             lien.state.amountOwed, 
             pastInterest, 

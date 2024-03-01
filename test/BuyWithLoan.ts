@@ -1,16 +1,18 @@
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
+
 import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { extractBorrowLog, extractBuyWithLoanLog } from './helpers/events';
-import { generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
+import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, MarketOfferStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -62,14 +64,8 @@ describe("Buy With Loan", function () {
 
   beforeEach(async () => {
 
-    loanOffer = {
-      lender: lender,
-      recipient: recipient,
+    const loanOfferTerms: LoanOfferTermsStruct = {
       currency: testErc20,
-      collection: testErc721,
-      criteria: 0,
-      identifier: tokenId,
-      size: 1,
       totalAmount: principal,
       maxAmount: principal,
       minAmount: principal,
@@ -80,17 +76,36 @@ describe("Buy With Loan", function () {
       gracePeriod: MONTH_SECONDS
     }
 
-    askOffer = {
-      side: 1,
-      maker: seller,
-      currency: testErc20,
+    const collateral: CollateralStruct = {
       collection: testErc721,
       criteria: 0,
-      identifier: BigInt(tokenId),
-      size: 1,
+      identifier: tokenId,
+      size: 1
+    }
+
+    loanOffer = {
+      lender: lender,
+      recipient: recipient,
+      terms: loanOfferTerms,
+      collateral,
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
+    }
+
+    const askOfferTerms = {
+      currency: testErc20,
       amount: principal * 3n / 2n,
       withLoan: false,
       borrowAmount: 0
+    }
+
+    askOffer = {
+      side: 1,
+      maker: seller,
+      terms: askOfferTerms,
+      collateral: { ...collateral },
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
   })
 
@@ -129,8 +144,8 @@ describe("Buy With Loan", function () {
     
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(askOffer.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(askOffer.amount) - borrowAmount));
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(askOffer.terms.amount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(askOffer.terms.amount) - borrowAmount));
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - borrowAmount);
     
         // logging checks
@@ -158,12 +173,13 @@ describe("Buy With Loan", function () {
         const sellerBalance_before = await testErc20.balanceOf(seller);
         const buyerBalance_before = await testErc20.balanceOf(buyer);
         const lenderBalance_before = await testErc20.balanceOf(lender);
-    
+        
+        askOffer.terms.amount = principal;
         const txn = await kettle.connect(buyer).buyWithLoan(
           tokenId,
           borrowAmount,
           loanOffer,
-          { ...askOffer, amount: principal },
+          askOffer,
           proof,
           proof
         );
@@ -208,11 +224,12 @@ describe("Buy With Loan", function () {
   it("should fail if collections do not match", async () => {
     const borrowAmount = principal;
 
+    askOffer.collateral.collection = testErc20;
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
-      { ...askOffer, collection: testErc20 },
+      askOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");  
@@ -221,11 +238,12 @@ describe("Buy With Loan", function () {
   it("should fail if currencies do not match", async () => {
     const borrowAmount = principal;
 
+    askOffer.terms.currency = testErc721;
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
-      { ...askOffer, currency: testErc721 },
+      askOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");  
@@ -234,11 +252,13 @@ describe("Buy With Loan", function () {
   it("should fail if sizes do not match", async () => {
     const borrowAmount = principal;
 
+    askOffer.collateral.size = 2;
+    loanOffer.collateral.size = 1;
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
-      { ...askOffer, size: 2 },
+      askOffer,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");  
