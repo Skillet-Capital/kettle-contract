@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+// import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria } from "./Errors.sol";
@@ -13,13 +13,16 @@ import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { Transfer } from "./Transfer.sol";
 import { Distributions } from "./Distributions.sol";
+import { Signatures } from "./Signatures.sol";
 
-contract Kettle is IKettle, OfferController, Initializable {
+import "hardhat/console.sol";
+
+contract Kettle is IKettle, Signatures {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
-    function initialize() public {}
+    constructor() Signatures() public {}
 
     function amountOwed(Lien memory lien) public view returns (
         uint256 amountOwed,
@@ -57,10 +60,17 @@ contract Kettle is IKettle, OfferController, Initializable {
         uint256 amount,
         uint256 tokenId,
         address borrower,
+        bytes calldata signature,
         bytes32[] calldata proof
     ) public returns (uint256 lienId){
         if (borrower == address(0)) borrower = msg.sender;
 
+        _verifyOfferAuthorization(
+            _hashLoanOffer(offer), 
+            offer.lender, 
+            signature
+        );
+        
         _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
 
         lienId = _borrow(offer, amount, tokenId, borrower);
@@ -420,11 +430,22 @@ contract Kettle is IKettle, OfferController, Initializable {
      function marketOrder(
         uint256 tokenId,
         MarketOffer calldata offer,
+        bytes calldata signature,
         bytes32[] calldata proof
      ) public {
 
-        _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
-        // _takeMarketOffer(offer);
+        _verifyOfferAuthorization(
+            _hashMarketOffer(offer), 
+            offer.maker, 
+            signature
+        );
+
+        _verifyCollateral(
+            offer.collateral.criteria,
+            offer.collateral.identifier, 
+            tokenId, 
+            proof
+        );
 
         if (offer.side == Side.BID) {
             if (offer.terms.withLoan) {
@@ -598,8 +619,16 @@ contract Kettle is IKettle, OfferController, Initializable {
         uint256 lienId,
         Lien calldata lien,
         MarketOffer calldata askOffer,
+        bytes calldata askOfferSignature,
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
+
+        bytes32 _askOfferHash = _hashMarketOffer(askOffer);
+        _verifyOfferAuthorization(
+            _askOfferHash,
+            askOffer.maker,
+            askOfferSignature
+        );
 
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, proof);
         // _takeMarketOffer(askOffer);
@@ -692,8 +721,16 @@ contract Kettle is IKettle, OfferController, Initializable {
         uint256 lienId,
         Lien calldata lien,
         MarketOffer calldata bidOffer,
+        bytes calldata bidOfferSignature,
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) {
+
+        bytes32 _bidOfferHash = _hashMarketOffer(bidOffer);
+        _verifyOfferAuthorization(
+            _bidOfferHash,
+            bidOffer.maker,
+            bidOfferSignature
+        );
 
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, proof);
         // _takeMarketOffer(bidOffer);
