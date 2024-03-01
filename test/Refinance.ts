@@ -8,6 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
+import { signLoanOffer } from "./helpers/signatures";
 import { extractBorrowLog, extractRefinanceLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
 
@@ -67,6 +68,8 @@ describe("Refinance", function () {
   let terms: LoanOfferTermsStruct;
   let collateral: CollateralStruct;
 
+  let signature: string;
+
   let borrowerBalanceBefore: bigint;
   let recipientBalanceBefore: bigint;
   let lender1BalanceBefore: bigint;
@@ -101,7 +104,9 @@ describe("Refinance", function () {
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
+    signature = await signLoanOffer(kettle, lender, offer);
+
+    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
 
     borrowerBalanceBefore = await testErc20.balanceOf(borrower);
@@ -132,6 +137,8 @@ describe("Refinance", function () {
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
+
+        signature = await signLoanOffer(kettle, lender2, refinanceOffer);
       });
 
       for (var i=0; i<2; i++) {
@@ -156,6 +163,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -180,6 +188,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -204,6 +213,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -228,6 +238,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
