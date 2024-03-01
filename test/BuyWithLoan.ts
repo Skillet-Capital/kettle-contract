@@ -4,6 +4,7 @@ import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
+import { signLoanOffer, signMarketOffer } from "./helpers";
 import { extractBorrowLog, extractBuyWithLoanLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
@@ -62,6 +63,9 @@ describe("Buy With Loan", function () {
   let loanOffer: LoanOfferStruct;
   let askOffer: MarketOfferStruct;
 
+  let loanOfferSignature: string;
+  let askOfferSignature: string;
+
   beforeEach(async () => {
 
     const loanOfferTerms: LoanOfferTermsStruct = {
@@ -107,6 +111,9 @@ describe("Buy With Loan", function () {
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
+
+    loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
+    askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
   })
 
   for (const criteria of [0, 1]) {
@@ -122,6 +129,15 @@ describe("Buy With Loan", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
+
+        askOffer.collateral.criteria = criteria;
+        askOffer.collateral.identifier = identifier;
+
+        loanOffer.collateral.criteria = criteria;
+        loanOffer.collateral.identifier = identifier;
+
+        loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
+        askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
       });
 
       it("should purchase an asset with an ask using a loan (amount < ask)", async () => {
@@ -138,6 +154,8 @@ describe("Buy With Loan", function () {
           borrowAmount,
           loanOffer,
           askOffer,
+          loanOfferSignature,
+          askOfferSignature,
           proof,
           proof
         );
@@ -175,11 +193,14 @@ describe("Buy With Loan", function () {
         const lenderBalance_before = await testErc20.balanceOf(lender);
         
         askOffer.terms.amount = principal;
+        askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
         const txn = await kettle.connect(buyer).buyWithLoan(
           tokenId,
           borrowAmount,
           loanOffer,
           askOffer,
+          loanOfferSignature,
+          askOfferSignature,
           proof,
           proof
         );
@@ -211,11 +232,15 @@ describe("Buy With Loan", function () {
   it("should fail if side is not ask", async () => {
     const borrowAmount = principal;
 
+    askOffer.side = 0;
+    askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
-      { ...askOffer, side: 0 },
+      askOffer,
+      loanOfferSignature,
+      askOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "OfferNotAsk");  
@@ -225,11 +250,14 @@ describe("Buy With Loan", function () {
     const borrowAmount = principal;
 
     askOffer.collateral.collection = testErc20;
+    askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
       askOffer,
+      loanOfferSignature,
+      askOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");  
@@ -239,11 +267,14 @@ describe("Buy With Loan", function () {
     const borrowAmount = principal;
 
     askOffer.terms.currency = testErc721;
+    askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
       askOffer,
+      loanOfferSignature,
+      askOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");  
@@ -254,11 +285,16 @@ describe("Buy With Loan", function () {
 
     askOffer.collateral.size = 2;
     loanOffer.collateral.size = 1;
+    askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
+    loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
+
     await expect(kettle.connect(buyer).buyWithLoan(
       tokenId,
       borrowAmount,
       loanOffer,
       askOffer,
+      loanOfferSignature,
+      askOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");  
