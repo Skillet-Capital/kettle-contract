@@ -3,8 +3,9 @@ import { expect } from "chai";
 import { Signer } from "ethers";
 
 import { getFixture } from './setup';
+import { signMarketOffer } from "./helpers/signatures";
 import { extractBuyInLienLog, extractBorrowLog } from './helpers/events';
-import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
+import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
@@ -40,6 +41,8 @@ describe("Buy In Lien", function () {
 
   let loanOffer: LoanOfferStruct;
   let askOffer: MarketOfferStruct;
+
+  let marketOfferSignature: string;
 
   let buyerBalance_before: bigint;
   let borrowerBalance_before: bigint;
@@ -110,9 +113,11 @@ describe("Buy In Lien", function () {
       maker: borrower,
       terms: askOfferTerms,
       collateral,
-      salt: randomBytes(),
-      expiration: await time.latest() + DAY_SECONDS
+      salt: "0000000000000000000000000000000000000000000000000000000000000000", //randomBytes(),
+      expiration: DAY_SECONDS //await time.latest() + DAY_SECONDS
     }
+
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
 
     buyerBalance_before = await testErc20.balanceOf(buyer);
     borrowerBalance_before = await testErc20.balanceOf(borrower);
@@ -133,6 +138,10 @@ describe("Buy In Lien", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
+
+        askOffer.collateral.criteria = criteria;
+        askOffer.collateral.identifier = identifier;
+        marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
       });
 
       it("should purchase a listed asset in a lien (current lien)", async () => {
@@ -140,17 +149,12 @@ describe("Buy In Lien", function () {
     
         // before checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+
         const txn = await kettle.connect(buyer).buyInLien(
           lienId,
           lien,
-          { 
-            ...askOffer, 
-            collateral: {
-              ...askOffer.collateral,
-              identifier, 
-              criteria 
-            }
-          },
+          askOffer,
+          marketOfferSignature,
           proof
         );
     
@@ -190,14 +194,8 @@ describe("Buy In Lien", function () {
         const txn = await kettle.connect(buyer).buyInLien(
           lienId,
           lien,
-          { 
-            ...askOffer, 
-            collateral: {
-              ...askOffer.collateral,
-              identifier, 
-              criteria 
-            }
-          },
+          askOffer,
+          marketOfferSignature,
           proof
         );
     
@@ -237,24 +235,31 @@ describe("Buy In Lien", function () {
       lienId,
       lien,
       askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "LienDefaulted");  
   });
 
   it("should fail if token id does not match identifier", async () => {
+    askOffer.collateral.identifier = tokenId + 1;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(buyer).buyInLien(
       lienId,
       lien,
-      { ...askOffer, collateral: { ...askOffer.collateral, identifier: tokenId + 1 } },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "InvalidCriteria");
   });
 
   it("should fail if criteria expected and does not match", async () => {
+    askOffer.collateral.criteria = 1;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(buyer).buyInLien(
       lienId,
       lien,
-      { ...askOffer, collateral: { ...askOffer.collateral, criteria: 1 } },
+      askOffer,
+      marketOfferSignature,
       [
         randomBytes()
       ]
@@ -262,55 +267,73 @@ describe("Buy In Lien", function () {
   });
 
   it("should fail if borrower is not offer maker", async () => {
+    askOffer.maker = buyer;
+    marketOfferSignature = await signMarketOffer(kettle, buyer, askOffer);
     await expect(kettle.connect(buyer).buyInLien(
       lienId,
       lien,
-      { ...askOffer, maker: buyer },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "MakerIsNotBorrower");  
   });
 
   it("should fail if offer is not ask", async () => {
+    askOffer.side = 0;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(buyer).buyInLien(
       lienId,
       lien,
-      { ...askOffer, side: 0 },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "OfferNotAsk");  
   });
 
   it("should fail if collections do not match", async () => {
+    askOffer.collateral.collection = testErc20;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(borrower).buyInLien(
       lienId,
       lien,
-      { ...askOffer, collateral: { ...askOffer.collateral, collection: testErc20 } },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");  
   });
 
   it("should fail if currencies do not match", async () => {
+    askOffer.terms.currency = testErc721;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(borrower).buyInLien(
       lienId,
       lien,
-      { ...askOffer, terms: { ...askOffer.terms, currency: testErc721 } },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");  
   });
 
   it("should fail if sizes do not match", async () => {
+    askOffer.collateral.size = 2;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(borrower).buyInLien(
       lienId,
       lien,
-      { ...askOffer, collateral: { ...askOffer.collateral, size: 2 } },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");  
   });
 
   it("should fail if ask amount does not cover debt", async () => {
+    askOffer.terms.amount = principal;
+    marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     await expect(kettle.connect(borrower).buyInLien(
       lienId,
       lien,
-      { ...askOffer, terms: { ...askOffer.terms, amount: principal } },
+      askOffer,
+      marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "InsufficientAskAmount");  
   });
