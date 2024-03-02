@@ -147,7 +147,7 @@ describe("Buy In Lien", function () {
       });
 
       it("should purchase a listed asset in a lien (current lien)", async () => {
-        const { amountOwed, principal: _principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.amountOwed(lien);
+        const { balance, principal: _principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.payments(lien);
     
         // before checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
@@ -163,7 +163,7 @@ describe("Buy In Lien", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
         expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(askOffer.terms.amount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalance_before + (BigInt(askOffer.terms.amount) - amountOwed));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalance_before + (BigInt(askOffer.terms.amount) - balance));
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before + pastInterest + currentInterest + _principal);
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + pastFee + currentFee);
     
@@ -176,9 +176,9 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.collection).to.equal(lien.collection);
         expect(buyInLienLog.tokenId).to.equal(lien.tokenId);
         expect(buyInLienLog.size).to.equal(lien.size);
-        expect(buyInLienLog.askAmount).to.equal(askOffer.terms.amount);
+        expect(buyInLienLog.amount).to.equal(askOffer.terms.amount);
     
-        expect(buyInLienLog.amountOwed).to.equal(amountOwed);
+        expect(buyInLienLog.balance).to.equal(balance);
         expect(buyInLienLog.principal).to.equal(_principal);
         expect(buyInLienLog.currentInterest).to.equal(currentInterest);
         expect(buyInLienLog.currentFee).to.equal(currentFee);
@@ -188,10 +188,11 @@ describe("Buy In Lien", function () {
   
       it("should purchase a listed asset in a lien (delinquent lien)", async () => {
         await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n / 2n));
+
         askOffer.expiration = await time.latest() + DAY_SECONDS;
         marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     
-        const { amountOwed, principal: _principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.amountOwed(lien);
+        const { balance, principal: _principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.payments(lien);
     
         // before checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
@@ -206,7 +207,7 @@ describe("Buy In Lien", function () {
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
         expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(askOffer.terms.amount));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalance_before + (BigInt(askOffer.terms.amount) - amountOwed));
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalance_before + (BigInt(askOffer.terms.amount) - balance));
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before + pastInterest + currentInterest + _principal);
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + pastFee + currentFee);
     
@@ -219,9 +220,9 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.collection).to.equal(lien.collection);
         expect(buyInLienLog.tokenId).to.equal(lien.tokenId);
         expect(buyInLienLog.size).to.equal(lien.size);
-        expect(buyInLienLog.askAmount).to.equal(askOffer.terms.amount);
+        expect(buyInLienLog.amount).to.equal(askOffer.terms.amount);
     
-        expect(buyInLienLog.amountOwed).to.equal(amountOwed);
+        expect(buyInLienLog.balance).to.equal(balance);
         expect(buyInLienLog.principal).to.equal(_principal);
         expect(buyInLienLog.currentInterest).to.equal(currentInterest);
         expect(buyInLienLog.currentFee).to.equal(currentFee);
