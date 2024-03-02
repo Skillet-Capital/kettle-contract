@@ -182,8 +182,8 @@ describe("Sell With Loan", function () {
         expect(borrowLog.lien.borrower).to.equal(sellWithLoanLog.buyer).to.equal(bidOffer.maker).to.equal(buyer);
         
         expect(sellWithLoanLog.seller).to.equal(seller);
-        expect(borrowLog.lien.lender).to.equal(lender);
-    
+        expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender);
+
         expect(borrowLog.lien.currency).to.equal(sellWithLoanLog.currency).to.equal(loanOffer.terms.currency);
         expect(borrowLog.lien.collection).to.equal(sellWithLoanLog.collection).to.equal(loanOffer.collateral.collection);
         expect(borrowLog.lien.tokenId).to.equal(sellWithLoanLog.tokenId).to.equal(tokenId);

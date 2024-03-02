@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import { ERC721 } from "solmate/src/tokens/ERC721.sol";
+
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
@@ -9,16 +11,20 @@ import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorr
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
-import { Transfer } from "./Transfer.sol";
+import { SafeTransfer } from "./SafeTransfer.sol";
 import { Distributions } from "./Distributions.sol";
 import { OfferController } from "./OfferController.sol";
 
-contract Kettle is IKettle, OfferController {
+contract Kettle is IKettle, OfferController, ERC721 {
 
-    uint256 private _nextLienId;
+    uint256 private _nextLienId = 1;
     mapping(uint256 => bytes32) public liens;
 
-    constructor() OfferController() public {}
+    constructor() OfferController() ERC721("Kettle", "KETTLE") public {}
+
+    function tokenURI(uint256 id) public view override(ERC721) returns (string memory) {
+        return string(abi.encodePacked("https://kettle.finance/liens/"));
+    }
 
     function payments(Lien memory lien) public view returns (
         uint256 balance,
@@ -87,8 +93,8 @@ contract Kettle is IKettle, OfferController {
 
         lienId = _borrow(offer, amount, tokenId, borrower, signature);
 
-        Transfer.transferToken(offer.collateral.collection, msg.sender, address(this), tokenId, offer.collateral.size);
-        Transfer.transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
+        SafeTransfer.transferToken(offer.collateral.collection, msg.sender, address(this), tokenId, offer.collateral.size);
+        SafeTransfer.transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
     }
 
     function _borrow(
@@ -100,7 +106,6 @@ contract Kettle is IKettle, OfferController {
     ) internal returns (uint256 lienId) {
 
         Lien memory lien = Lien(
-            offer.lender,
             offer.recipient,
             borrower,
             offer.terms.currency,
@@ -126,9 +131,12 @@ contract Kettle is IKettle, OfferController {
 
         _takeLoanOffer(lienId, offer, lien, signature);
 
+        // mint receipt to lender
+        _safeMint(offer.lender, lienId);
+
         emit Borrow(
             lienId,
-            lien.lender,
+            offer.lender,
             lien.borrower,
             lien.recipient,
             lien.collection,
@@ -151,8 +159,8 @@ contract Kettle is IKettle, OfferController {
     ) public returns (uint256 lienId) {
         lienId = _loan(offer);
 
-        Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
-        Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
+        SafeTransfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
+        SafeTransfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
 
     function _loan(
@@ -160,7 +168,6 @@ contract Kettle is IKettle, OfferController {
     ) internal returns (uint256 lienId) {
 
         Lien memory lien = Lien(
-            msg.sender,
             offer.recipient,
             offer.borrower,
             offer.terms.currency,
@@ -186,9 +193,12 @@ contract Kettle is IKettle, OfferController {
 
         // _takeBorrowOffer(offer, lienId);
 
+        // mint receipt to lender
+        _safeMint(msg.sender, lienId);
+
         emit Borrow(
             lienId,
-            lien.lender,
+            msg.sender,
             lien.borrower,
             lien.recipient,
             lien.collection,
@@ -222,8 +232,8 @@ contract Kettle is IKettle, OfferController {
             uint256 currentFee
         ) = _payment(lien, lienId, _principal, false);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest + principal);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest + currentInterest + principal);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     function interestPayment(
@@ -238,8 +248,8 @@ contract Kettle is IKettle, OfferController {
             uint256 currentFee
         ) = _payment(lien, lienId, 0, false);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest + currentInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     function curePayment(
@@ -253,8 +263,8 @@ contract Kettle is IKettle, OfferController {
             ,
         ) = _payment(lien, lienId, 0, true);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
     function _payment(
@@ -289,7 +299,6 @@ contract Kettle is IKettle, OfferController {
 
         // update lien state
         Lien memory newLien = Lien(
-            lien.lender,
             lien.recipient,
             lien.borrower,
             lien.currency,
@@ -367,13 +376,15 @@ contract Kettle is IKettle, OfferController {
             pastFee,
             currentInterest,
             currentFee,
-            lien.lender,            // original lender
+            ownerOf(oldLienId),     // original lender
             lien.recipient,         // original recipient
             offer.lender,           // primary payer
             msg.sender,             // pays any remaining amount
             msg.sender              // receives net principal
         );
 
+        // burn lender receipt
+        _burn(oldLienId);
         delete liens[oldLienId];
 
         emit Refinance(
@@ -405,9 +416,13 @@ contract Kettle is IKettle, OfferController {
             uint256 currentFee
         ) = _repay(lien, lienId);
 
-        Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, principal + pastInterest + currentInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        SafeTransfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), principal + pastInterest + currentInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+
+        // burn lender receipt
+        _burn(lienId);
+        delete liens[lienId];
     }
 
     function _repay(
@@ -429,8 +444,6 @@ contract Kettle is IKettle, OfferController {
             currentInterest, 
             currentFee
         ) = payments(lien);
-
-        delete liens[lienId];
 
         emit Repay(
             lienId, 
@@ -455,11 +468,15 @@ contract Kettle is IKettle, OfferController {
             revert LienIsCurrent();
         }
 
+        address lender = ownerOf(lienId);
+
+        // burn lender receipt
+        _burn(lienId);
         delete liens[lienId];
 
-        Transfer.transferToken(lien.collection, address(this), lien.lender, lien.tokenId, lien.size);
+        SafeTransfer.transferToken(lien.collection, address(this), lender, lien.tokenId, lien.size);
 
-        emit Claim(lienId, lien.lender);
+        emit Claim(lienId, lender);
     }
 
     /*//////////////////////////////////////////////////
@@ -483,8 +500,8 @@ contract Kettle is IKettle, OfferController {
             if (offer.terms.withLoan) {
                 revert BidRequiresLoan();
             }
-            Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, offer.terms.amount);
+            SafeTransfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
+            SafeTransfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, offer.terms.amount);
             
             emit MarketOrder(
                 offer.maker,
@@ -497,8 +514,8 @@ contract Kettle is IKettle, OfferController {
             );
 
         } else {
-            Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, offer.terms.amount);
+            SafeTransfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
+            SafeTransfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, offer.terms.amount);
             
             emit MarketOrder(
                 msg.sender,
@@ -545,13 +562,13 @@ contract Kettle is IKettle, OfferController {
         lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender, loanOfferSignature);
 
         // transfer principal to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
+        SafeTransfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
 
         // transfer rest from buyer to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
+        SafeTransfer.transferCurrency(loanOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
+        SafeTransfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
 
         emit BuyWithLoan(
             lienId,
@@ -601,16 +618,16 @@ contract Kettle is IKettle, OfferController {
         lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker, loanOfferSignature);
 
         // transfer borrow amount to this
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
+        SafeTransfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
 
         // transfer rest of bid from buyer to this
-        Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+        SafeTransfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // transfer all currency to seller
-        Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, bidOffer.terms.amount);
+        SafeTransfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, bidOffer.terms.amount);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, bidOffer.collateral.size);
+        SafeTransfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, bidOffer.collateral.size);
 
         emit SellWithLoan(
             lienId,
@@ -675,7 +692,7 @@ contract Kettle is IKettle, OfferController {
             pastFee, 
             currentInterest, 
             currentFee, 
-            lien.lender, 
+            ownerOf(lienId), 
             lien.recipient, 
             msg.sender,                 // buyer pays primary amount
             msg.sender,                 // buyer pays residual amount
@@ -683,7 +700,7 @@ contract Kettle is IKettle, OfferController {
         );
 
         // transfer collateral from this to buyer
-        Transfer.transferToken(
+        SafeTransfer.transferToken(
             lien.collection, 
             address(this),
             msg.sender, 
@@ -691,6 +708,8 @@ contract Kettle is IKettle, OfferController {
             lien.size
         );
 
+        // burn lender receipt
+        _burn(lienId);
         delete liens[lienId];
 
         emit BuyInLien(
@@ -752,7 +771,7 @@ contract Kettle is IKettle, OfferController {
             pastFee,
             currentInterest,
             currentFee,
-            lien.lender,
+            ownerOf(lienId),
             lien.recipient,
             bidOffer.maker,                 // buyer pays primary amount
             msg.sender,                     // seller pays residual amount
@@ -760,8 +779,10 @@ contract Kettle is IKettle, OfferController {
         );
         
         // transfer collateral from this to buyer
-        Transfer.transferToken(lien.collection, address(this), bidOffer.maker, lien.tokenId, lien.size);
+        SafeTransfer.transferToken(lien.collection, address(this), bidOffer.maker, lien.tokenId, lien.size);
 
+        // burn lender receipt
+        _burn(lienId);
         delete liens[lienId];
 
         emit SellInLien(
@@ -836,7 +857,7 @@ contract Kettle is IKettle, OfferController {
             pastFee,
             currentInterest,
             currentFee,
-            lien.lender,
+            ownerOf(lienId),
             lien.recipient,
             loanOffer.lender,               // new lender pays primary amount
             msg.sender,                     // buyer pays any remaining amount
@@ -847,8 +868,10 @@ contract Kettle is IKettle, OfferController {
         // buyer already pays off lender if borrow amount is less than amount owed
         // if borrow amount is greater than amount owed, then buyer pays rest
         uint256 remainingAmountOwed = askOffer.terms.amount - Math.max(_borrowAmount, balance);
-        Transfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, remainingAmountOwed);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, remainingAmountOwed);
 
+        // burn lender receipt
+        _burn(lienId);
         delete liens[lienId];
 
         emit BuyInLienWithLoan(
@@ -902,10 +925,10 @@ contract Kettle is IKettle, OfferController {
         newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
 
         // transfer borrow amount to this
-        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
+        SafeTransfer.transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
 
         // transfer rest of bid from buyer to this
-        Transfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+        SafeTransfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         (
             uint256 balance,
@@ -925,13 +948,15 @@ contract Kettle is IKettle, OfferController {
             pastFee,
             currentInterest,
             currentFee,
-            lien.lender,
+            ownerOf(lienId),
             lien.recipient,
             address(this),              // this is the primary payer
             msg.sender,                 // seller pays residual amount
             msg.sender                  // seller receives net principal
         );
 
+        // burn lender receipt
+        _burn(lienId);
         delete liens[lienId];
 
         emit SellInLienWithLoan(

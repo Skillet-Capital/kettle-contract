@@ -1,6 +1,7 @@
 import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
 import { Signer } from "ethers";
+import { AddressZero } from "@ethersproject/constants";
 
 import { getFixture } from './setup';
 import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
@@ -99,6 +100,8 @@ describe("Buy In Lien With Loan", function () {
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
+
+    expect(await kettle.ownerOf(lienId)).to.equal(lender);
 
     const askOfferTerms = {
       currency: testErc20,
@@ -238,11 +241,12 @@ describe("Buy In Lien With Loan", function () {
             expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
             expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
             expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-            expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
             expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
             expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+
+            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > borrowAmount > principal + interest", async () => {
@@ -286,11 +290,12 @@ describe("Buy In Lien With Loan", function () {
             expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
             expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
             expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-            expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
             expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
             expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+
+            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > principal > borrowAmount", async () => {
@@ -334,11 +339,12 @@ describe("Buy In Lien With Loan", function () {
             expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
             expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
             expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-            expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
             expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
             expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+
+            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > borrowAmount > principal", async () => {
@@ -382,11 +388,12 @@ describe("Buy In Lien With Loan", function () {
             expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
             expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
             expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-            expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
             expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
             expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
+
+            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
         });
       }

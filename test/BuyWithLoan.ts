@@ -174,14 +174,14 @@ describe("Buy With Loan", function () {
     
         expect(borrowLog.lienId).to.equal(buyWithLoanLog.lienId);
         expect(borrowLog.lien.borrower).to.equal(buyWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
         expect(borrowLog.lien.collection).to.equal(buyWithLoanLog.collection);
         expect(borrowLog.lien.tokenId).to.equal(buyWithLoanLog.tokenId);
         expect(borrowLog.lien.principal).to.equal(buyWithLoanLog.borrowAmount);
         expect(buyWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
     
         expect(buyWithLoanLog.borrowAmount).to.equal(borrowLog.lien.principal).to.equal(borrowAmount);
-    
+
+        expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender);
       });
     
       it("should purchase an asset with an ask using a loan (amount > ask)", async () => {
@@ -218,13 +218,14 @@ describe("Buy With Loan", function () {
     
         expect(borrowLog.lienId).to.equal(buyWithLoanLog.lienId);
         expect(borrowLog.lien.borrower).to.equal(buyWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
         expect(borrowLog.lien.collection).to.equal(buyWithLoanLog.collection);
         expect(borrowLog.lien.tokenId).to.equal(buyWithLoanLog.tokenId);
         expect(borrowLog.lien.principal).to.equal(buyWithLoanLog.borrowAmount);
         expect(buyWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
     
         expect(buyWithLoanLog.borrowAmount).to.equal(buyWithLoanLog.amount).to.equal(principal);
+
+        expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender);
       });
     });
   }

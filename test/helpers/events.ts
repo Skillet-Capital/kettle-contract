@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { ContractTransactionReceipt } from "ethers"
 import { Kettle__factory } from "../../typechain-types";
 
-import { LienStruct, LienStateStruct } from "../../typechain-types/contracts/Kettle";
+import { LienStruct } from "../../typechain-types/contracts/Kettle";
 
 export async function getTimestamp(block: number) {
   return ethers.provider.getBlock(block).then((block) => block!.timestamp);
@@ -32,7 +32,6 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
   return {
     lienId: lien.lienId,
     lien: {
-      lender: lien.lender,
       borrower: lien.borrower,
       recipient: lien.recipient,
       currency: lien.currency,
