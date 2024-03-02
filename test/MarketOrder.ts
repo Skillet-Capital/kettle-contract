@@ -18,6 +18,8 @@ import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, Ma
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 
+const BYTES_ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 describe("Market Order", function () {
 
   let seller: Signer;
@@ -81,7 +83,8 @@ describe("Market Order", function () {
           currency: testErc20,
           amount: principal,
           withLoan: false,
-          borrowAmount: 0
+          borrowAmount: 0,
+          loanOfferHash: BYTES_ZERO
         }
       });
 

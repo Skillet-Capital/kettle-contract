@@ -91,22 +91,6 @@ describe("Sell With Loan", function () {
       gracePeriod: MONTH_SECONDS
     }
 
-    marketOfferTerms = {
-      currency: testErc20,
-      amount: principal,
-      withLoan: true,
-      borrowAmount: principal / 2n
-    }
-
-    bidOffer = {
-      side: 0,
-      maker: buyer,
-      terms: marketOfferTerms,
-      collateral: { ...collateral },
-      salt: randomBytes(),
-      expiration: await time.latest() + DAY_SECONDS
-    }
-
     loanOffer = {
       lender: lender,
       recipient,
@@ -115,6 +99,25 @@ describe("Sell With Loan", function () {
         minAmount: 0
       },
       collateral: { ...collateral},
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
+    }
+
+    const loanOfferHash = await kettle.hashLoanOffer(loanOffer);
+
+    marketOfferTerms = {
+      currency: testErc20,
+      amount: principal,
+      withLoan: true,
+      borrowAmount: principal / 2n,
+      loanOfferHash
+    }
+
+    bidOffer = {
+      side: 0,
+      maker: buyer,
+      terms: marketOfferTerms,
+      collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
@@ -144,6 +147,8 @@ describe("Sell With Loan", function () {
         bidOffer.collateral.identifier = identifier;
 
         loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
+
+        bidOffer.terms.loanOfferHash = await kettle.hashLoanOffer(loanOffer);
         bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
       });
 
@@ -236,6 +241,20 @@ describe("Sell With Loan", function () {
         []
       )).to.be.revertedWithCustomError(kettle, "BidCannotBorrow");
     });
+
+    it("should fail if loan offer hash does not match loan offer", async () => {
+      bidOffer.terms.loanOfferHash = randomBytes();
+      bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+      await expect(kettle.connect(seller).sellWithLoan(
+        tokenId,
+        loanOffer,
+        bidOffer,
+        loanOfferSignature,
+        bidOfferSignature,
+        [],
+        []
+      )).to.be.revertedWithCustomError(kettle, "BidCannotBorrow");
+    })
 
     it("should fail if collections do not match", async () => {
       bidOffer.collateral.collection = testErc20;

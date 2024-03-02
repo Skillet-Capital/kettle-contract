@@ -27,6 +27,7 @@ const marketOfferTermsTypes = [
   { name: "amount", type: "uint256" },
   { name: "withLoan", type: "bool" },
   { name: "borrowAmount", type: "uint256" },
+  { name: "loanOfferHash", type: "bytes32" }
 ];
 
 export async function signMarketOffer(

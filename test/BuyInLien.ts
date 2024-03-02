@@ -18,6 +18,8 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
+const BYTES_ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 describe("Buy In Lien", function () {
 
   let owner: Signer;
@@ -107,7 +109,8 @@ describe("Buy In Lien", function () {
       currency: testErc20,
       amount: principal * 3n / 2n,
       withLoan: false,
-      borrowAmount: 0
+      borrowAmount: 0,
+      loanOfferHash: BYTES_ZERO
     }
 
     askOffer = {

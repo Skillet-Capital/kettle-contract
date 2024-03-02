@@ -23,6 +23,8 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
 const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
+const BYTES_ZERO = "0x0000000000000000000000000000000000000000000000000000000000000000";
+
 describe("Sell In Lien", function () {
 
   let owner: Signer;
@@ -102,14 +104,15 @@ describe("Sell In Lien", function () {
     const signature = await signLoanOffer(kettle, lender, offer);
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
-    ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
+      ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
     offerTerms = {
       currency: testErc20,
       amount: principal,
       withLoan: false,
-      borrowAmount: 0
+      borrowAmount: 0,
+      loanOfferHash: BYTES_ZERO
     }
 
     bidOffer = {
@@ -381,6 +384,18 @@ describe("Sell In Lien", function () {
       marketOfferSignature,
       []
     )).to.be.revertedWithCustomError(kettle, "OfferNotBid");
+  });
+
+  it('should fail if bid requires loan', async () => {
+    bidOffer.terms.withLoan = true;
+    marketOfferSignature = await signMarketOffer(kettle, offerMaker, bidOffer);
+    await expect(kettle.connect(borrower).sellInLien(
+      lienId,
+      lien,
+      bidOffer,
+      marketOfferSignature,
+      []
+    )).to.be.revertedWithCustomError(kettle, "BidRequiresLoan");
   });
 
   it('should fail if collections do not match', async () => {
