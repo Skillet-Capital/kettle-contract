@@ -198,11 +198,11 @@ describe("Sell In Lien With Loan", function () {
       });
 
       it("bid > amountOwed", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+        const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
-        bidOffer.terms.amount = amountOwed * 2n;
+        bidOffer.terms.amount = balance * 2n;
         bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
@@ -219,7 +219,7 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - balance);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
@@ -227,7 +227,7 @@ describe("Sell In Lien With Loan", function () {
       })
 
       it("amount owed > bid > principal + interest", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+        const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
         
@@ -248,7 +248,7 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - balance);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
@@ -256,7 +256,7 @@ describe("Sell In Lien With Loan", function () {
       });
 
       it("amount owed > bid > principal", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+        const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
         
@@ -277,7 +277,7 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - balance);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
@@ -285,7 +285,7 @@ describe("Sell In Lien With Loan", function () {
       });
 
       it("amount owed > principal > bid", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+        const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
     
@@ -307,7 +307,7 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - balance);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);
@@ -315,7 +315,7 @@ describe("Sell In Lien With Loan", function () {
       });
 
       it("amount owed > principal = bid amount = borrow amount", async () => {
-        const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+        const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -337,7 +337,7 @@ describe("Sell In Lien With Loan", function () {
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
 
         expect(await testErc20.balanceOf(buyer)).to.equal(bidderBalanceBefore);
-        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - amountOwed);
+        expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore + BigInt(bidOffer.terms.amount) - balance);
 
         expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + pastFee + currentFee);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalanceBefore + currentInterest + pastInterest + principal);

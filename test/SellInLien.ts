@@ -169,7 +169,7 @@ describe("Sell In Lien", function () {
           })
 
           it("bid amount > amountOwed", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -207,8 +207,8 @@ describe("Sell In Lien", function () {
             expect(sellInLienLog.collection).to.equal(testErc721);
             expect(sellInLienLog.tokenId).to.equal(tokenId);
             expect(sellInLienLog.size).to.equal(1);
-            expect(sellInLienLog.bidAmount).to.equal(bidAmount);
-            expect(sellInLienLog.amountOwed).to.equal(amountOwed);
+            expect(sellInLienLog.amount).to.equal(bidAmount);
+            expect(sellInLienLog.balance).to.equal(balance);
             expect(sellInLienLog.principal).to.equal(principal);
             expect(sellInLienLog.currentInterest).to.equal(currentInterest);
             expect(sellInLienLog.currentFee).to.equal(currentFee);
@@ -217,7 +217,7 @@ describe("Sell In Lien", function () {
           });
 
           it("amountOwed > bid amount > principal + interest", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -255,8 +255,8 @@ describe("Sell In Lien", function () {
             expect(sellInLienLog.collection).to.equal(testErc721);
             expect(sellInLienLog.tokenId).to.equal(tokenId);
             expect(sellInLienLog.size).to.equal(1);
-            expect(sellInLienLog.bidAmount).to.equal(bidAmount);
-            expect(sellInLienLog.amountOwed).to.equal(amountOwed);
+            expect(sellInLienLog.amount).to.equal(bidAmount);
+            expect(sellInLienLog.balance).to.equal(balance);
             expect(sellInLienLog.principal).to.equal(principal);
             expect(sellInLienLog.currentInterest).to.equal(currentInterest);
             expect(sellInLienLog.currentFee).to.equal(currentFee);
@@ -265,7 +265,7 @@ describe("Sell In Lien", function () {
           });
 
           it("amountOwed > bid amount > principal", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -302,8 +302,8 @@ describe("Sell In Lien", function () {
             expect(sellInLienLog.collection).to.equal(testErc721);
             expect(sellInLienLog.tokenId).to.equal(tokenId);
             expect(sellInLienLog.size).to.equal(1);
-            expect(sellInLienLog.bidAmount).to.equal(bidAmount);
-            expect(sellInLienLog.amountOwed).to.equal(amountOwed);
+            expect(sellInLienLog.amount).to.equal(bidAmount);
+            expect(sellInLienLog.balance).to.equal(balance);
             expect(sellInLienLog.principal).to.equal(principal);
             expect(sellInLienLog.currentInterest).to.equal(currentInterest);
             expect(sellInLienLog.currentFee).to.equal(currentFee);
@@ -312,7 +312,7 @@ describe("Sell In Lien", function () {
           });
 
           it("bid amount < principal", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -346,8 +346,8 @@ describe("Sell In Lien", function () {
             expect(sellInLienLog.collection).to.equal(testErc721);
             expect(sellInLienLog.tokenId).to.equal(tokenId);
             expect(sellInLienLog.size).to.equal(1);
-            expect(sellInLienLog.bidAmount).to.equal(bidAmount);
-            expect(sellInLienLog.amountOwed).to.equal(amountOwed);
+            expect(sellInLienLog.amount).to.equal(bidAmount);
+            expect(sellInLienLog.balance).to.equal(balance);
             expect(sellInLienLog.principal).to.equal(principal);
             expect(sellInLienLog.currentInterest).to.equal(currentInterest);
             expect(sellInLienLog.currentFee).to.equal(currentFee);

@@ -48,7 +48,7 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       gracePeriod: lien.gracePeriod,
       state: {
         paidThrough: lien.startTime,
-        amountOwed: lien.principal
+        principal: lien.principal
       }
     }
   }
@@ -63,12 +63,12 @@ export function extractPaymentLog(receipt: ContractTransactionReceipt) {
 
   return {
     lienId: payment.lienId,
+    principal: payment.principal,
     pastInterest: payment.pastInterest,
     pastFee: payment.pastFee,
     currentInterest: payment.currentInterest,
     currentFee: payment.currentFee,
-    principal: payment.principal,
-    amountOwed: payment.amountOwed,
+    newPrincipal: payment.newPrincipal,
     paidThrough: payment.paidThrough
   }
 }
@@ -82,12 +82,12 @@ export function extractRepayLog(receipt: ContractTransactionReceipt) {
 
   return {
     lienId: repay.lienId,
+    balance: repay.balance,
+    principal: repay.principal,
     pastInterest: repay.pastInterest,
     pastFee: repay.pastFee,
     currentInterest: repay.currentInterest,
-    currentFee: repay.currentFee,
-    principal: repay.principal,
-    amountOwed: repay.amountOwed
+    currentFee: repay.currentFee
   }
 }
 
@@ -101,13 +101,13 @@ export function extractRefinanceLog(receipt: ContractTransactionReceipt) {
   return {
     oldLienId: repay.oldLienId,
     newLienId: repay.newLienId,
+    amount: repay.amount,
+    balance: repay.balance,
+    principal: repay.principal,
     pastInterest: repay.pastInterest,
     pastFee: repay.pastFee,
     currentInterest: repay.currentInterest,
-    currentFee: repay.currentFee,
-    principal: repay.principal,
-    amountOwed: repay.amountOwed,
-    amount: repay.amount
+    currentFee: repay.currentFee
   }
 }
 
@@ -154,8 +154,8 @@ export function extractBuyInLienLog(receipt: ContractTransactionReceipt) {
     collection: log.collection,
     tokenId: log.tokenId,
     size: log.size,
-    askAmount: log.askAmount,
-    amountOwed: log.amountOwed,
+    amount: log.amount,
+    balance: log.balance,
     principal: log.principal,
     pastInterest: log.pastInterest,
     pastFee: log.pastFee,
@@ -175,8 +175,8 @@ export function extractSellInLienLog(receipt: ContractTransactionReceipt) {
     collection: log.collection,
     tokenId: log.tokenId,
     size: log.size,
-    bidAmount: log.bidAmount,
-    amountOwed: log.amountOwed,
+    amount: log.amount,
+    balance: log.balance,
     principal: log.principal,
     pastInterest: log.pastInterest,
     pastFee: log.pastFee,
@@ -197,9 +197,9 @@ export function extractBuyInLienWithLoanLog(receipt: ContractTransactionReceipt)
     collection: log.collection,
     tokenId: log.tokenId,
     size: log.size,
-    askAmount: log.askAmount,
+    amount: log.amount,
     borrowAmount: log.borrowAmount,
-    amountOwed: log.amountOwed,
+    balance: log.balance,
     principal: log.principal,
     pastInterest: log.pastInterest,
     pastFee: log.pastFee,
@@ -220,9 +220,9 @@ export function extractSellInLienWithLoanLog(receipt: ContractTransactionReceipt
     collection: log.collection,
     tokenId: log.tokenId,
     size: log.size,
-    bidAmount: log.bidAmount,
+    amount: log.amount,
     borrowAmount: log.borrowAmount,
-    amountOwed: log.amountOwed,
+    balance: log.balance,
     principal: log.principal,
     pastInterest: log.pastInterest,
     pastFee: log.pastFee,
