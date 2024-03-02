@@ -16,7 +16,7 @@ library Distributions {
     function distributeLoanPayments(
         address currency,
         uint256 amount,
-        uint256 amountOwed,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
@@ -31,7 +31,7 @@ library Distributions {
         uint256 interest = pastInterest + currentInterest;
         uint256 fee = pastFee + currentFee;
 
-        if (amount < amountOwed) {
+        if (amount < balance) {
 
             DistributionTranche[3] memory tranches = _createTranches(
                 principal, 
@@ -95,7 +95,7 @@ library Distributions {
             }
 
         } else {
-            uint256 netPrincipalReceived = amount - amountOwed;
+            uint256 netPrincipalReceived = amount - balance;
             _transferCurrency(currency, primaryPayer, residualRecipient, netPrincipalReceived);
             _transferCurrency(currency, primaryPayer, lender, interest + principal);
             _transferCurrency(currency, primaryPayer, feeRecipient, fee);

@@ -1,23 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import "solmate/src/utils/SignedWadMath.sol";
-
-import { Lien, LienStatus } from "../Structs.sol";
-
-import "hardhat/console.sol";
 
 library FixedInterest {
     int256 private constant _YEAR_WAD = 365 days * 1e18;
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    function computeAmountOwed(Lien memory lien)
+    function computeInterestAndFees(
+        uint256 startTime,
+        uint256 paidThrough,
+        uint256 tenor,
+        uint256 period,
+        uint256 rate,
+        uint256 fee,
+        uint256 principal
+    )
         public 
         view 
         returns (
-            uint256 amountOwed,
             uint256 pastInterest,
             uint256 pastFee,
             uint256 currentInterest,
@@ -25,52 +27,19 @@ library FixedInterest {
         ) 
     {   
         // if the loan is paid up to date, return no interest
-        if (block.timestamp < lien.state.paidThrough) {
-            return (lien.state.amountOwed, 0, 0, 0, 0);
-        }
+        if (block.timestamp < paidThrough) return (0, 0, 0, 0);
 
-        bool inDefault = false;
-        if (block.timestamp > lien.state.paidThrough + lien.period) {
-            inDefault = true;
-        }
-
-        bool pastTenor = false;
-        if (block.timestamp > lien.startTime + lien.tenor) {
-            pastTenor = true;
-        }
+        bool inDefault = (block.timestamp > paidThrough + period) ? true : false;
+        bool pastTenor = (block.timestamp > startTime + tenor) ? true : false;
 
         if (inDefault) {
-            pastInterest = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate, 
-                lien.period
-            ) - lien.state.amountOwed;
-
-            pastFee = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.fee,
-                lien.period
-            ) - lien.state.amountOwed;
+            pastInterest = computeCurrentDebt(principal, rate, period) - principal;
+            pastFee = computeCurrentDebt(principal, fee, period) - principal;
         }
 
         if (!pastTenor) {
-            currentInterest = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.rate, 
-                lien.period
-            ) - lien.state.amountOwed;
-
-            currentFee = computeCurrentDebt(
-                lien.state.amountOwed, 
-                lien.fee, 
-                lien.period
-            ) - lien.state.amountOwed;
-        }
-
-        if (inDefault) {
-            amountOwed = lien.state.amountOwed + pastInterest + pastFee + currentInterest + currentFee;
-        } else {
-            amountOwed = lien.state.amountOwed + currentInterest + currentFee;
+            currentInterest = computeCurrentDebt(principal, rate, period) - principal;
+            currentFee = computeCurrentDebt(principal, fee, period) - principal;
         }
     }
 
@@ -84,7 +53,7 @@ library FixedInterest {
         uint256 amount,
         uint256 rate,
         uint256 period
-    ) public view returns (uint256) {
+    ) public pure returns (uint256) {
         int256 yearsWad = wadDiv(int256(period) * 1e18, _YEAR_WAD);
         return amount + uint256(wadMul(int256(amount), wadMul(yearsWad, bipsToSignedWads(rate))));
     }
@@ -96,55 +65,83 @@ library FixedInterest {
         return int256((bips * 1e18) / _BASIS_POINTS);
     }
 
-    function computePaidThrough(Lien memory lien, bool cureOnly) public view returns (uint256) {
-        if (block.timestamp > lien.state.paidThrough + lien.period) {
+    function computePaidThrough(
+        uint256 currentPaidThrough, 
+        uint256 period,
+        bool cureOnly
+    ) public view returns (uint256) {
+        if (block.timestamp > currentPaidThrough + period) {
             if (cureOnly) {
-                return lien.state.paidThrough + lien.period;
+                return currentPaidThrough + period;
             } else {
-                return lien.state.paidThrough + (lien.period * 2);
+                return currentPaidThrough + (period * 2);
             }
         }
 
-        uint256 paidThrough = lien.state.paidThrough;
+        uint256 paidThrough = currentPaidThrough;
         if (paidThrough > block.timestamp) return paidThrough;
-        return paidThrough + lien.period;
+        return paidThrough + period;
     }
 
-    function computeDelinquentPaymentDate(Lien memory lien) public view returns (uint256) {
-        if (lien.startTime + lien.tenor < block.timestamp) {
-            return lien.startTime + lien.tenor + lien.gracePeriod;
-        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
-            return lien.state.paidThrough + lien.period + lien.gracePeriod;
+    function computeDelinquentPaymentDate(
+        uint256 startTime,
+        uint256 paidThrough,
+        uint256 tenor,
+        uint256 period,
+        uint256 gracePeriod
+    ) public view returns (uint256)
+    {
+        if (startTime + tenor < block.timestamp) {
+            return startTime + tenor + gracePeriod;
+        } else if (paidThrough + period < block.timestamp) {
+            return paidThrough + period + gracePeriod;
         } else {
-            return lien.state.paidThrough + lien.period;
+            return 0;
         }
     }
 
-    function computeNextPaymentDate(Lien memory lien) public view returns (uint256) {
-        if (lien.startTime + lien.tenor + lien.gracePeriod < block.timestamp) {
-            return lien.startTime + lien.tenor + lien.gracePeriod;
-        } else if (lien.state.paidThrough + lien.period + lien.gracePeriod < block.timestamp) {
-            return lien.state.paidThrough + lien.period + lien.gracePeriod;
-        } else if (lien.startTime + lien.tenor < block.timestamp) {
-            return lien.startTime + lien.tenor + lien.gracePeriod;
-        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
-            return lien.state.paidThrough + lien.period + lien.gracePeriod;
+    function computeNextPaymentDate(
+        uint256 startTime,
+        uint256 paidThrough,
+        uint256 tenor,
+        uint256 period,
+        uint256 gracePeriod
+    ) public view returns (uint256)
+    {
+        if (startTime + tenor + gracePeriod < block.timestamp) {
+            return startTime + tenor + gracePeriod;
+        } else if (paidThrough + period + gracePeriod < block.timestamp) {
+            return paidThrough + period + gracePeriod;
+        } else if (startTime + tenor < block.timestamp) {
+            return startTime + tenor + gracePeriod;
+        } else if (paidThrough + period < block.timestamp) {
+            return paidThrough + period + gracePeriod;
         } else {
-            return lien.state.paidThrough + lien.period;
+            return paidThrough + period;
         }
     }
 
-    function computeLienStatus(Lien memory lien) public view returns (uint8) {
-        if (lien.startTime + lien.tenor + lien.gracePeriod < block.timestamp) {
-            return uint8(LienStatus.DEFAULTED);
-        } else if (lien.state.paidThrough + lien.period + lien.gracePeriod < block.timestamp) {
-            return uint8(LienStatus.DEFAULTED);
-        } else if (lien.startTime + lien.tenor < block.timestamp) {
-            return uint8(LienStatus.DELINQUENT);
-        } else if (lien.state.paidThrough + lien.period < block.timestamp) {
-            return uint8(LienStatus.DELINQUENT);
+    function computeLienStatus(
+        uint256 startTime,
+        uint256 paidThrough,
+        uint256 tenor,
+        uint256 period,
+        uint256 gracePeriod,
+        uint8 defaultStatusCode,
+        uint8 delinquentStatusCode,
+        uint8 currentStatusCode
+    ) public view returns (uint8) 
+    {
+        if (startTime + tenor + gracePeriod < block.timestamp) {
+            return defaultStatusCode;
+        } else if (paidThrough + period + gracePeriod < block.timestamp) {
+            return defaultStatusCode;
+        } else if (startTime + tenor < block.timestamp) {
+            return delinquentStatusCode;
+        } else if (paidThrough + period < block.timestamp) {
+            return delinquentStatusCode;
         } else {
-            return uint8(LienStatus.CURRENT);
+            return currentStatusCode;
         }
     }
 }

@@ -161,7 +161,7 @@ describe("Refinance", function () {
           });
 
           it("amount > amountOwed", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -186,7 +186,7 @@ describe("Refinance", function () {
           })
       
           it("amount > principal + interest", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -210,7 +210,7 @@ describe("Refinance", function () {
           });
       
           it("amount > principal", async () => {
-            const { amountOwed, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.amountOwed(lien);
+            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
@@ -235,7 +235,7 @@ describe("Refinance", function () {
           });
       
           it("amount < principal", async () => {
-            const { principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.amountOwed(lien);
+            const { principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.payments(lien);
             expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 

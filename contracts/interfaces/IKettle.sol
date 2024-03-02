@@ -23,30 +23,30 @@ interface IKettle {
 
     event Payment(
         uint256 indexed lienId,
+        uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
         uint256 currentFee,
-        uint256 principal,
-        uint256 amountOwed,
+        uint256 newPrincipal,
         uint256 paidThrough
     );
 
     event Repay(
         uint256 indexed lienId,
+        uint256 balance,
+        uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
-        uint256 currentFee,
-        uint256 principal,
-        uint256 amountOwed
+        uint256 currentFee
     );
 
     event Refinance(
         uint256 indexed oldLienId,
         uint256 indexed newLienId,
         uint256 amount,
-        uint256 amountOwed,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
@@ -89,8 +89,8 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 askAmount,
-        uint256 amountOwed,
+        uint256 amount,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
@@ -107,9 +107,9 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 askAmount,
+        uint256 amount,
         uint256 borrowAmount,
-        uint256 amountOwed,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
@@ -137,8 +137,8 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 bidAmount,
-        uint256 amountOwed,
+        uint256 amount,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
@@ -155,9 +155,9 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 bidAmount,
+        uint256 amount,
         uint256 borrowAmount,
-        uint256 amountOwed,
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
