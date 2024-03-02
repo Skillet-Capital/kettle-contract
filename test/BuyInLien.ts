@@ -115,8 +115,8 @@ describe("Buy In Lien", function () {
       maker: borrower,
       terms: askOfferTerms,
       collateral,
-      salt: "0000000000000000000000000000000000000000000000000000000000000000", //randomBytes(),
-      expiration: DAY_SECONDS //await time.latest() + DAY_SECONDS
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
     }
 
     marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
@@ -188,6 +188,8 @@ describe("Buy In Lien", function () {
   
       it("should purchase a listed asset in a lien (delinquent lien)", async () => {
         await time.increaseTo(BigInt(lien.startTime) + (BigInt(lien.period) * 3n / 2n));
+        askOffer.expiration = await time.latest() + DAY_SECONDS;
+        marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
     
         const { amountOwed, principal: _principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.amountOwed(lien);
     
