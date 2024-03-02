@@ -80,7 +80,7 @@ describe("Refinance", function () {
       currency: testErc20,
       totalAmount: principal,
       maxAmount: principal,
-      minAmount: principal,
+      minAmount: 0,
       tenor: DAY_SECONDS * 365,
       period: MONTH_SECONDS,
       rate: "1000",
@@ -128,17 +128,6 @@ describe("Refinance", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
-
-        refinanceOffer = {
-          lender: lender2,
-          recipient: recipient,
-          terms,
-          collateral,
-          salt: randomBytes(),
-          expiration: await time.latest() + DAY_SECONDS
-        }
-
-        signature = await signLoanOffer(kettle, lender2, refinanceOffer);
       });
 
       for (var i=0; i<2; i++) {
@@ -149,6 +138,26 @@ describe("Refinance", function () {
             if (delinquent) {
               await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
             }
+
+            refinanceOffer = {
+              lender: lender2,
+              recipient: recipient,
+              terms: {
+                ...terms,
+                totalAmount: principal * 2n,
+                maxAmount: principal * 2n,
+                minAmount: 0
+              },
+              collateral: {
+                ...collateral,
+                criteria,
+                identifier,
+              },
+              salt: randomBytes(),
+              expiration: await time.latest() + DAY_SECONDS
+            }
+    
+            signature = await signLoanOffer(kettle, lender2, refinanceOffer);
           });
 
           it("amount > amountOwed", async () => {
@@ -182,7 +191,6 @@ describe("Refinance", function () {
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
             const refinanceAmount = principal + pastInterest + currentInterest + pastFee + (currentFee / 2n);
-      
             const txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
