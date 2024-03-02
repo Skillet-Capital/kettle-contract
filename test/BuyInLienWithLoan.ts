@@ -120,7 +120,7 @@ describe("Buy In Lien With Loan", function () {
     loanOffer.lender = lender2;
     loanOffer.terms.totalAmount = principal * 2n;
     loanOffer.terms.maxAmount = principal * 2n;
-    loanOffer.terms.minAmount = principal * 2n;
+    loanOffer.terms.minAmount = 0;
 
     loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
     askOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
@@ -163,6 +163,12 @@ describe("Buy In Lien With Loan", function () {
           beforeEach(async () => {
             if (delinquent) {
               await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
+
+              askOffer.expiration = await time.latest() + DAY_SECONDS;
+              loanOffer.expiration = await time.latest() + DAY_SECONDS;
+
+              askOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
+              loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
             }
 
             expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);
@@ -387,7 +393,7 @@ describe("Buy In Lien With Loan", function () {
     });
   }
 
-  it.skip("should fail if borrower is not offer maker", async () => {
+  it("should fail if borrower is not offer maker", async () => {
     await expect(kettle.connect(buyer).buyInLienWithLoan(
       lienId,
       principal,
