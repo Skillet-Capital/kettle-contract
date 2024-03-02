@@ -9,7 +9,7 @@ enum LienStatus {
 
 struct LienState {
     uint256 paidThrough;
-    uint256 amountOwed;
+    uint256 principal;
 }
 
 struct Lien {
