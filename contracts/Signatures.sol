@@ -40,6 +40,18 @@ contract Signatures {
         ) = _createTypeHashes();
     }
 
+    function hashLoanOffer(LoanOffer calldata offer) external view returns (bytes32) {
+        return _hashLoanOffer(offer);
+    }
+
+    function hashBorrowOffer(BorrowOffer calldata offer) external view returns (bytes32) {
+        return _hashBorrowOffer(offer);
+    }
+
+    function hashMarketOffer(MarketOffer calldata offer) external view returns (bytes32) {
+        return _hashMarketOffer(offer);
+    }
+
     function _createTypeHashes()
         internal
         pure
@@ -140,7 +152,8 @@ contract Signatures {
             "address currency,",
             "uint256 amount,",
             "bool withLoan,",
-            "uint256 borrowAmount",
+            "uint256 borrowAmount,",
+            "bytes32 loanOfferHash",
             ")"
         );
 
@@ -278,7 +291,8 @@ contract Signatures {
                     terms.currency,
                     terms.amount,
                     terms.withLoan,
-                    terms.borrowAmount
+                    terms.borrowAmount,
+                    terms.loanOfferHash
                 )
             );
     }

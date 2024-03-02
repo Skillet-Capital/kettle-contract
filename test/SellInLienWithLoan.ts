@@ -112,22 +112,6 @@ describe("Sell In Lien With Loan", function () {
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
-    marketOfferTerms = {
-      currency: testErc20,
-      amount: principal,
-      withLoan: true,
-      borrowAmount: principal
-    }
-
-    bidOffer = {
-      side: 0,
-      maker: buyer,
-      terms: marketOfferTerms,
-      collateral: { ...collateral },
-      salt: randomBytes(),
-      expiration: await time.latest() + DAY_SECONDS
-    }
-
     loanOffer = {
       lender: lender2,
       recipient,
@@ -136,6 +120,25 @@ describe("Sell In Lien With Loan", function () {
         minAmount: 0
       },
       collateral: { ...collateral},
+      salt: randomBytes(),
+      expiration: await time.latest() + DAY_SECONDS
+    }
+
+    const loanOfferHash = await kettle.hashLoanOffer(loanOffer);
+
+    marketOfferTerms = {
+      currency: testErc20,
+      amount: principal,
+      withLoan: true,
+      borrowAmount: principal,
+      loanOfferHash
+    }
+
+    bidOffer = {
+      side: 0,
+      maker: buyer,
+      terms: marketOfferTerms,
+      collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
@@ -374,6 +377,48 @@ describe("Sell In Lien With Loan", function () {
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "OfferNotBid");  
+  });
+
+  it("should fail if bid not with loan", async () => {
+    bidOffer.terms.withLoan = false;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+    await expect(kettle.connect(borrower).sellWithLoan(
+      tokenId,
+      loanOffer,
+      bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
+      [],
+      []
+    )).to.be.revertedWithCustomError(kettle, "BidNotWithLoan");
+  });
+
+  it("should fail if bid amount less than borrow amount", async () => {
+    bidOffer.terms.borrowAmount = principal * 2n;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+    await expect(kettle.connect(borrower).sellWithLoan(
+      tokenId,
+      loanOffer,
+      bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
+      [],
+      []
+    )).to.be.revertedWithCustomError(kettle, "BidCannotBorrow");
+  });
+
+  it("should fail if loan offer hash does not match loan offer", async () => {
+    bidOffer.terms.loanOfferHash = randomBytes();
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+    await expect(kettle.connect(borrower).sellWithLoan(
+      tokenId,
+      loanOffer,
+      bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
+      [],
+      []
+    )).to.be.revertedWithCustomError(kettle, "BidCannotBorrow");
   });
 
   it("should fail if collections do not match (ask and lien)", async () => {

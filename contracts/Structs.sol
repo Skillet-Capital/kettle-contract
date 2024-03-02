@@ -85,6 +85,7 @@ struct MarketOfferTerms {
     uint256 amount;
     bool withLoan;
     uint256 borrowAmount;
+    bytes32 loanOfferHash;
 }
 
 struct MarketOffer {

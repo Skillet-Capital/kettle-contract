@@ -606,6 +606,11 @@ contract Kettle is IKettle, OfferController, ERC721 {
             revert BidNotWithLoan();
         }
 
+        bytes32 _loanOfferHash = _hashLoanOffer(loanOffer);
+        if (!(bidOffer.terms.loanOfferHash == _loanOfferHash)) {
+            revert BidCannotBorrow();
+        }
+
         _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, tokenId, loanProof);
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, tokenId, bidProof);
 
@@ -745,6 +750,10 @@ contract Kettle is IKettle, OfferController, ERC721 {
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) {
         if (bidOffer.side != Side.BID) {
             revert OfferNotBid();
+        }
+
+        if (bidOffer.terms.withLoan) {
+            revert BidRequiresLoan();
         }
 
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, proof);
