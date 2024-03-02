@@ -8,6 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
+import { signLoanOffer } from "./helpers/signatures";
 import { extractBorrowLog, extractPaymentLog, extractRepayLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
 
@@ -102,8 +103,10 @@ describe("Loan", function () {
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
+
+        const signature = await signLoanOffer(kettle, lender, loanOffer);
     
-        const txn = await kettle.connect(borrower).borrow(loanOffer, principal, 1, borrower, proof);
+        const txn = await kettle.connect(borrower).borrow(loanOffer, principal, tokenId, borrower, signature, proof);
         ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
       })
     

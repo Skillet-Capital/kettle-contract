@@ -6,6 +6,9 @@ import "hardhat-tracer";
 
 import "@openzeppelin/hardhat-upgrades";
 
+import * as dotenv from "dotenv";
+dotenv.config();
+
 const config: HardhatUserConfig = {
   solidity: {
     compilers: [
@@ -29,6 +32,10 @@ const config: HardhatUserConfig = {
   warnings: 'off',
   networks: {
     hardhat: {
+      forking: {
+        url: `https://eth-mainnet.g.alchemy.com/v2/${process.env.MAINNET_ALCHEMY_KEY}`,
+        blockNumber: 19120000
+      },
       allowUnlimitedContractSize: true,
       chainId: 1,
       gas: 1e9,

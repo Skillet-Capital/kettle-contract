@@ -40,13 +40,14 @@ export async function getFixture(): Promise<Fixture> {
   await transfer.waitForDeployment();
 
   /* Deploy Kettle */
-  await upgrades.silenceWarnings();
-  const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
-  const kettle = await upgrades.deployProxy(Kettle, [], { 
-    initializer: 'initialize',
-    unsafeAllow: ['external-library-linking'],
-  });
+  // await upgrades.silenceWarnings();
+  // const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
+  // const kettle = await upgrades.deployProxy(Kettle, [], { 
+  //   initializer: 'initialize',
+  //   unsafeAllow: ['external-library-linking'],
+  // });
 
+  const kettle = await ethers.deployContract("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
   await kettle.waitForDeployment();
 
   /* Deploy TestERC20 */

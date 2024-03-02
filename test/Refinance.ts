@@ -8,6 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
+import { signLoanOffer } from "./helpers/signatures";
 import { extractBorrowLog, extractRefinanceLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
 
@@ -67,6 +68,8 @@ describe("Refinance", function () {
   let terms: LoanOfferTermsStruct;
   let collateral: CollateralStruct;
 
+  let signature: string;
+
   let borrowerBalanceBefore: bigint;
   let recipientBalanceBefore: bigint;
   let lender1BalanceBefore: bigint;
@@ -77,7 +80,7 @@ describe("Refinance", function () {
       currency: testErc20,
       totalAmount: principal,
       maxAmount: principal,
-      minAmount: principal,
+      minAmount: 0,
       tenor: DAY_SECONDS * 365,
       period: MONTH_SECONDS,
       rate: "1000",
@@ -101,7 +104,9 @@ describe("Refinance", function () {
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
+    signature = await signLoanOffer(kettle, lender, offer);
+
+    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
 
     borrowerBalanceBefore = await testErc20.balanceOf(borrower);
@@ -123,15 +128,6 @@ describe("Refinance", function () {
           proof = generateMerkleProofForToken(tokens, tokenId);
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
-
-        refinanceOffer = {
-          lender: lender2,
-          recipient: recipient,
-          terms,
-          collateral,
-          salt: randomBytes(),
-          expiration: await time.latest() + DAY_SECONDS
-        }
       });
 
       for (var i=0; i<2; i++) {
@@ -142,6 +138,26 @@ describe("Refinance", function () {
             if (delinquent) {
               await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
             }
+
+            refinanceOffer = {
+              lender: lender2,
+              recipient: recipient,
+              terms: {
+                ...terms,
+                totalAmount: principal * 2n,
+                maxAmount: principal * 2n,
+                minAmount: 0
+              },
+              collateral: {
+                ...collateral,
+                criteria,
+                identifier,
+              },
+              salt: randomBytes(),
+              expiration: await time.latest() + DAY_SECONDS
+            }
+    
+            signature = await signLoanOffer(kettle, lender2, refinanceOffer);
           });
 
           it("amount > amountOwed", async () => {
@@ -156,6 +172,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -174,12 +191,12 @@ describe("Refinance", function () {
             expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
             const refinanceAmount = principal + pastInterest + currentInterest + pastFee + (currentFee / 2n);
-      
             const txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -204,6 +221,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       
@@ -228,6 +246,7 @@ describe("Refinance", function () {
               refinanceAmount,
               lien,
               refinanceOffer,
+              signature,
               proof
             );
       

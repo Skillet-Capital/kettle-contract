@@ -7,6 +7,11 @@ error LienIsCurrent();
 error Unauthorized();
 error OnlyBorrower();
 
+error OfferExpired();
+error InvalidLoanAmount();
+error InsufficientOffer();
+error OfferUnavailable();
+
 error InvalidCriteria();
 
 error OfferNotAsk();
@@ -21,3 +26,6 @@ error InsufficientAskAmount();
 error CollectionMismatch();
 error CurrencyMismatch();
 error SizeMismatch();
+
+error InvalidSignature();
+error InvalidVParameter();
