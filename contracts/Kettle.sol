@@ -21,31 +21,53 @@ contract Kettle is IKettle, OfferController {
 
     constructor() OfferController() public {}
 
-    function amountOwed(Lien memory lien) public view returns (
-        uint256 amountOwed,
+    function payments(Lien memory lien) public view returns (
+        uint256 balance,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
         uint256 currentFee
     ) {
+        principal = lien.state.principal;
         (
-            amountOwed,
             pastInterest, 
             pastFee, 
             currentInterest,
             currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
-
-        principal = lien.state.amountOwed;
+        ) = FixedInterest.computeInterestAndFees(
+            lien.startTime,
+            lien.state.paidThrough,
+            lien.tenor,
+            lien.period,
+            lien.rate,
+            lien.fee,
+            principal
+        );
+        balance = principal + pastInterest + pastFee + currentInterest + currentFee;
     }
 
     function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
-        return FixedInterest.computeNextPaymentDate(lien);
+        return FixedInterest.computeNextPaymentDate(
+            lien.startTime,
+            lien.state.paidThrough,
+            lien.tenor,
+            lien.period,
+            lien.gracePeriod
+        );
     }
 
     function lienStatus(Lien memory lien) public view returns (uint8) {
-        return FixedInterest.computeLienStatus(lien);
+        return FixedInterest.computeLienStatus(
+            lien.startTime,
+            lien.state.paidThrough,
+            lien.tenor,
+            lien.period,
+            lien.gracePeriod,
+            uint8(LienStatus.DEFAULTED),
+            uint8(LienStatus.DELINQUENT),
+            uint8(LienStatus.CURRENT)
+        );
     }
 
     /*//////////////////////////////////////////////////
@@ -95,7 +117,7 @@ contract Kettle is IKettle, OfferController {
             block.timestamp,
             LienState({
                 paidThrough: block.timestamp,
-                amountOwed: amount
+                principal: amount
             })
         );
 
@@ -155,7 +177,7 @@ contract Kettle is IKettle, OfferController {
             block.timestamp,
             LienState({
                 paidThrough: block.timestamp,
-                amountOwed: offer.terms.amount
+                principal: offer.terms.amount
             })
         );
 
@@ -194,11 +216,11 @@ contract Kettle is IKettle, OfferController {
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
        (
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
-            uint256 currentFee,
-            uint256 principal
+            uint256 currentFee
         ) = _payment(lien, lienId, _principal, false);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest + principal);
@@ -210,10 +232,11 @@ contract Kettle is IKettle, OfferController {
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (
+            ,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest,
-            uint256 currentFee,
+            uint256 currentFee
         ) = _payment(lien, lienId, 0, false);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest);
@@ -225,9 +248,10 @@ contract Kettle is IKettle, OfferController {
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (
+            ,
             uint256 pastInterest, 
             uint256 pastFee,
-            ,,
+            ,
         ) = _payment(lien, lienId, 0, true);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest);
@@ -240,19 +264,20 @@ contract Kettle is IKettle, OfferController {
         uint256 _principal,
         bool cureOnly
     ) internal returns (
+        uint256 principal,
         uint256 pastInterest, 
         uint256 pastFee, 
         uint256 currentInterest,
-        uint256 currentFee,
-        uint256 principal
+        uint256 currentFee
     ) {
         (
+            ,
             ,
             pastInterest, 
             pastFee, 
             currentInterest, 
             currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
 
         // calculate minimum amount to be paid
         uint256 minimumPayment = pastInterest + pastFee;
@@ -260,8 +285,8 @@ contract Kettle is IKettle, OfferController {
             minimumPayment += currentInterest + currentFee;
         }
 
-        uint256 principal = Math.min(_principal, lien.state.amountOwed);
-        uint256 amountOwed = lien.state.amountOwed - principal;
+        uint256 principal = Math.min(_principal, lien.state.principal);
+        uint256 updatedPrincipal = lien.state.principal - principal;
 
         // update lien state
         Lien memory newLien = Lien(
@@ -280,8 +305,12 @@ contract Kettle is IKettle, OfferController {
             lien.tenor,
             lien.startTime,
             LienState({
-                paidThrough: FixedInterest.computePaidThrough(lien, cureOnly),
-                amountOwed: amountOwed
+                paidThrough: FixedInterest.computePaidThrough(
+                    lien.state.paidThrough, 
+                    lien.period,
+                    cureOnly
+                ),
+                principal: updatedPrincipal
             })
         );
 
@@ -289,12 +318,12 @@ contract Kettle is IKettle, OfferController {
 
         emit Payment(
             lienId, 
+            principal,
             pastInterest,
             pastFee,
             cureOnly ? 0 : currentInterest,
             cureOnly ? 0 : currentFee,
-            principal, 
-            newLien.state.amountOwed,
+            newLien.state.principal,
             newLien.state.paidThrough
         );
     }
@@ -322,18 +351,19 @@ contract Kettle is IKettle, OfferController {
         newLienId = _borrow(offer, amount, lien.tokenId, msg.sender, signature);
 
         (
-            uint256 amountOwed,
+            uint256 balance,
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
             uint256 currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
         
         Distributions.distributeLoanPayments(
             lien.currency,
             amount,                 // distribute new principal
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -351,8 +381,8 @@ contract Kettle is IKettle, OfferController {
             oldLienId,
             newLienId,
             amount,
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -369,6 +399,7 @@ contract Kettle is IKettle, OfferController {
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (
+            uint256 principal,
             uint256 pastInterest,
             uint256 pastFee,
             uint256 currentInterest,
@@ -376,7 +407,7 @@ contract Kettle is IKettle, OfferController {
         ) = _repay(lien, lienId);
 
         Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, lien.state.amountOwed + pastInterest + currentInterest + pastFee + currentFee);
+        Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, principal + pastInterest + currentInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
@@ -384,30 +415,32 @@ contract Kettle is IKettle, OfferController {
         Lien calldata lien,
         uint256 lienId
     ) internal returns (
+        uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
         uint256 currentFee
     ) {
-        uint256 amountOwed;
+        uint256 balance;
         (
-            amountOwed,
+            balance,
+            principal,
             pastInterest, 
             pastFee, 
             currentInterest, 
             currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
 
         delete liens[lienId];
 
         emit Repay(
             lienId, 
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
-            currentFee,
-            lien.state.amountOwed,
-            amountOwed
+            currentFee
         );
     }
 
@@ -621,23 +654,24 @@ contract Kettle is IKettle, OfferController {
         _takeMarketOffer(askOffer, askOfferSignature);
 
         (
-            uint256 amountOwed,
+            uint256 balance,
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
             uint256 currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
 
         // ask amount must be greater than amount owed
-        if (askOffer.terms.amount < amountOwed) {
+        if (askOffer.terms.amount < balance) {
             revert InsufficientAskAmount();
         }
 
         Distributions.distributeLoanPayments(
             lien.currency, 
             askOffer.terms.amount,      // distribute ask amount
-            amountOwed, 
-            lien.state.amountOwed, 
+            balance, 
+            principal,
             pastInterest, 
             pastFee, 
             currentInterest, 
@@ -669,8 +703,8 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId,
             lien.size,
             askOffer.terms.amount,
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -702,18 +736,19 @@ contract Kettle is IKettle, OfferController {
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
         (
-            uint256 amountOwed,
+            uint256 balance,
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
             uint256 currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
         
         Distributions.distributeLoanPayments(
             lien.currency,
             bidOffer.terms.amount,          // distribute bid amount
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -739,8 +774,8 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId, 
             lien.size, 
             bidOffer.terms.amount, 
-            amountOwed, 
-            lien.state.amountOwed, 
+            balance, 
+            principal, 
             pastInterest, 
             pastFee, 
             currentInterest, 
@@ -777,14 +812,15 @@ contract Kettle is IKettle, OfferController {
         _takeMarketOffer(askOffer, askOfferSignature);
 
         (
-            uint256 amountOwed,
+            uint256 balance,
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
             uint256 currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
 
-        if (askOffer.terms.amount < amountOwed) {
+        if (askOffer.terms.amount < balance) {
             revert InsufficientAskAmount();
         }
 
@@ -795,8 +831,8 @@ contract Kettle is IKettle, OfferController {
         Distributions.distributeLoanPayments(
             lien.currency,
             _borrowAmount,                  // distribute new principal
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -811,7 +847,7 @@ contract Kettle is IKettle, OfferController {
         // remaining amount owed by buyer is the diff between ask and max of borrow or amount owed
         // buyer already pays off lender if borrow amount is less than amount owed
         // if borrow amount is greater than amount owed, then buyer pays rest
-        uint256 remainingAmountOwed = askOffer.terms.amount - Math.max(_borrowAmount, amountOwed);
+        uint256 remainingAmountOwed = askOffer.terms.amount - Math.max(_borrowAmount, balance);
         Transfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, remainingAmountOwed);
 
         delete liens[lienId];
@@ -827,8 +863,8 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             askOffer.terms.amount,
             _borrowAmount,
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -873,18 +909,19 @@ contract Kettle is IKettle, OfferController {
         Transfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         (
-            uint256 amountOwed,
+            uint256 balance,
+            uint256 principal,
             uint256 pastInterest, 
             uint256 pastFee, 
             uint256 currentInterest, 
             uint256 currentFee
-        ) = FixedInterest.computeAmountOwed(lien);
+        ) = payments(lien);
 
         Distributions.distributeLoanPayments(
             lien.currency,
             bidOffer.terms.amount,      // distribute bid amount
-            amountOwed,
-            lien.state.amountOwed,
+            balance,
+            principal,
             pastInterest,
             pastFee,
             currentInterest,
@@ -909,8 +946,8 @@ contract Kettle is IKettle, OfferController {
             lien.size, 
             bidOffer.terms.amount,
             bidOffer.terms.borrowAmount, 
-            amountOwed, 
-            lien.state.amountOwed, 
+            balance,
+            principal, 
             pastInterest, 
             pastFee, 
             currentInterest, 
