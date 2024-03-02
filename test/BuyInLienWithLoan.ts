@@ -111,7 +111,7 @@ describe("Buy In Lien With Loan", function () {
       side: 1,
       maker: borrower,
       terms: askOfferTerms,
-      collateral,
+      collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
