@@ -131,7 +131,10 @@ describe("Sell In Lien With Loan", function () {
     loanOffer = {
       lender: lender2,
       recipient,
-      terms: loanOfferTerms,
+      terms: {
+        ...loanOfferTerms,
+        minAmount: 0
+      },
       collateral: { ...collateral},
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
@@ -178,6 +181,12 @@ describe("Sell In Lien With Loan", function () {
       beforeEach(async () => {
         if (delinquent) {
           await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
+
+          loanOffer.expiration = await time.latest() + DAY_SECONDS;
+          loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
+
+          bidOffer.expiration = await time.latest() + DAY_SECONDS;
+          bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         }
 
         expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);

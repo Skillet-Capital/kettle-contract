@@ -110,7 +110,10 @@ describe("Sell With Loan", function () {
     loanOffer = {
       lender: lender,
       recipient,
-      terms: loanOfferTerms,
+      terms: {
+        ...loanOfferTerms,
+        minAmount: 0
+      },
       collateral: { ...collateral},
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
