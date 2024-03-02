@@ -72,7 +72,7 @@ describe("Buy With Loan", function () {
       currency: testErc20,
       totalAmount: principal,
       maxAmount: principal,
-      minAmount: principal,
+      minAmount: 0,
       tenor: DAY_SECONDS * 365,
       period: MONTH_SECONDS,
       rate: "1000",
