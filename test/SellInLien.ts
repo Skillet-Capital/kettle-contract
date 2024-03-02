@@ -156,6 +156,9 @@ describe("Sell In Lien", function () {
           beforeEach(async () => {
             if (delinquent) {
               await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
+
+              bidOffer.expiration = await time.latest() + DAY_SECONDS;
+              marketOfferSignature = await signMarketOffer(kettle, offerMaker, bidOffer);
             }
 
             expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);
