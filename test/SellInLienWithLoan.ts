@@ -8,6 +8,7 @@ import { ethers } from "hardhat";
 import { Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
+import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
 import { extractBorrowLog, extractBuyInLienWithLoanLog } from './helpers/events';
 import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
 
@@ -73,6 +74,9 @@ describe("Sell In Lien With Loan", function () {
 
   let collateral: CollateralStruct;
 
+  let loanOfferSignature: string;
+  let bidOfferSignature: string;
+
   beforeEach(async () => {
     loanOfferTerms = {
       currency: testErc20,
@@ -102,7 +106,9 @@ describe("Sell In Lien With Loan", function () {
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, []);
+    const signature = await signLoanOffer(kettle, lender, offer);
+
+    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
@@ -130,6 +136,9 @@ describe("Sell In Lien With Loan", function () {
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
+
+    loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
   });
 
   for (const criteria of [0, 1]) {
@@ -151,6 +160,9 @@ describe("Sell In Lien With Loan", function () {
 
         bidOffer.collateral.criteria = criteria;
         bidOffer.collateral.identifier = identifier;
+
+        loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
       });
 
   for (var i=0; i<2; i++) {
@@ -182,11 +194,14 @@ describe("Sell In Lien With Loan", function () {
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
 
         bidOffer.terms.amount = amountOwed * 2n;
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
           loanOffer,
           bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
           proof,
           proof
         );
@@ -208,11 +223,14 @@ describe("Sell In Lien With Loan", function () {
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
         
         bidOffer.terms.amount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n)
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
           loanOffer,
           bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
           proof,
           proof
         );
@@ -233,12 +251,15 @@ describe("Sell In Lien With Loan", function () {
         expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
         expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
         
-        bidOffer.terms.amount = principal + (currentInterest / 2n) + pastInterest
+        bidOffer.terms.amount = principal + (currentInterest / 2n) + pastInterest;
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
           loanOffer,
           bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
           proof,
           proof
         );
@@ -261,11 +282,14 @@ describe("Sell In Lien With Loan", function () {
     
         bidOffer.terms.amount = principal / 2n;
         bidOffer.terms.borrowAmount = principal / 3n;
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
           loanOffer,
           bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
           proof,
           proof
         );
@@ -288,11 +312,14 @@ describe("Sell In Lien With Loan", function () {
 
         bidOffer.terms.amount = principal;
         bidOffer.terms.borrowAmount = principal;
+        bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
         const txn = await kettle.connect(borrower).sellInLienWithLoan(
           lienId,
           lien,
           loanOffer,
           bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
           proof,
           proof
         );
@@ -318,17 +345,23 @@ describe("Sell In Lien With Loan", function () {
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "OnlyBorrower");  
   });
 
   it("should fail if offer is not bid", async () => {
+    bidOffer.side = 1;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
-      { ...bidOffer, side: 1 },
+      bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "OfferNotBid");  
@@ -336,11 +369,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if collections do not match (ask and lien)", async () => {
     bidOffer.collateral.collection = testErc20;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");    
@@ -348,11 +384,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if collections do not match (loan offer and lien)", async () => {
     loanOffer.collateral.collection = testErc20;
+    loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CollectionMismatch");    
@@ -360,11 +399,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if currencies do not match (ask and lien)", async () => {
     bidOffer.terms.currency = testErc721;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");    
@@ -372,11 +414,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if currencies do not match (loan offer and lien)", async () => {
     loanOffer.terms.currency = testErc721;
+    loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "CurrencyMismatch");    
@@ -384,11 +429,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if sizes do not match (ask and lien)", async () => {
     bidOffer.collateral.size = 2;
+    bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");    
@@ -396,11 +444,14 @@ describe("Sell In Lien With Loan", function () {
 
   it("should fail if sizes do not match (loan offer and lien)", async () => {
     loanOffer.collateral.size = 2;
+    loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
     await expect(kettle.connect(borrower).sellInLienWithLoan(
       lienId,
       lien,
       loanOffer,
       bidOffer,
+      loanOfferSignature,
+      bidOfferSignature,
       [],
       []
     )).to.be.revertedWithCustomError(kettle, "SizeMismatch");    
