@@ -14,22 +14,24 @@ interface IKettle {
         uint256 size,
         uint256 principal,
         uint256 rate,
+        uint256 defaultRate,
         uint256 fee,
         uint256 period,
         uint256 gracePeriod,
-        uint256 tenor,
+        uint256 installments,
         uint256 startTime
     );
 
     event Payment(
         uint256 indexed lienId,
+        uint256 installment,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
         uint256 currentFee,
         uint256 newPrincipal,
-        uint256 paidThrough
+        uint256 newInstallment
     );
 
     event Repay(

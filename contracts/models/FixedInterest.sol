@@ -10,10 +10,11 @@ library FixedInterest {
 
     function computeInterestAndFees(
         uint256 startTime,
-        uint256 paidThrough,
-        uint256 tenor,
+        uint256 installment,
         uint256 period,
+        uint256 installments,
         uint256 rate,
+        uint256 defaultRate,
         uint256 fee,
         uint256 principal
     )
@@ -26,6 +27,9 @@ library FixedInterest {
             uint256 currentFee
         ) 
     {   
+        uint256 paidThrough = startTime + (installment * period);
+        uint256 tenor = period * installments;
+
         // if the loan is paid up to date, return no interest
         if (block.timestamp < paidThrough) return (0, 0, 0, 0);
 
@@ -33,7 +37,7 @@ library FixedInterest {
         bool pastTenor = (block.timestamp > startTime + tenor) ? true : false;
 
         if (inDefault) {
-            pastInterest = computeCurrentDebt(principal, rate, period) - principal;
+            pastInterest = computeCurrentDebt(principal, defaultRate, period) - principal;
             pastFee = computeCurrentDebt(principal, fee, period) - principal;
         }
 
@@ -65,83 +69,10 @@ library FixedInterest {
         return int256((bips * 1e18) / _BASIS_POINTS);
     }
 
-    function computePaidThrough(
-        uint256 currentPaidThrough, 
-        uint256 period,
-        bool cureOnly
-    ) public view returns (uint256) {
-        if (block.timestamp > currentPaidThrough + period) {
-            if (cureOnly) {
-                return currentPaidThrough + period;
-            } else {
-                return currentPaidThrough + (period * 2);
-            }
-        }
-
-        uint256 paidThrough = currentPaidThrough;
-        if (paidThrough > block.timestamp) return paidThrough;
-        return paidThrough + period;
-    }
-
-    function computeDelinquentPaymentDate(
-        uint256 startTime,
-        uint256 paidThrough,
-        uint256 tenor,
-        uint256 period,
-        uint256 gracePeriod
-    ) public view returns (uint256)
-    {
-        if (startTime + tenor < block.timestamp) {
-            return startTime + tenor + gracePeriod;
-        } else if (paidThrough + period < block.timestamp) {
-            return paidThrough + period + gracePeriod;
-        } else {
-            return 0;
-        }
-    }
-
-    function computeNextPaymentDate(
-        uint256 startTime,
-        uint256 paidThrough,
-        uint256 tenor,
-        uint256 period,
-        uint256 gracePeriod
-    ) public view returns (uint256)
-    {
-        if (startTime + tenor + gracePeriod < block.timestamp) {
-            return startTime + tenor + gracePeriod;
-        } else if (paidThrough + period + gracePeriod < block.timestamp) {
-            return paidThrough + period + gracePeriod;
-        } else if (startTime + tenor < block.timestamp) {
-            return startTime + tenor + gracePeriod;
-        } else if (paidThrough + period < block.timestamp) {
-            return paidThrough + period + gracePeriod;
-        } else {
-            return paidThrough + period;
-        }
-    }
-
-    function computeLienStatus(
-        uint256 startTime,
-        uint256 paidThrough,
-        uint256 tenor,
-        uint256 period,
-        uint256 gracePeriod,
-        uint8 defaultStatusCode,
-        uint8 delinquentStatusCode,
-        uint8 currentStatusCode
-    ) public view returns (uint8) 
-    {
-        if (startTime + tenor + gracePeriod < block.timestamp) {
-            return defaultStatusCode;
-        } else if (paidThrough + period + gracePeriod < block.timestamp) {
-            return defaultStatusCode;
-        } else if (startTime + tenor < block.timestamp) {
-            return delinquentStatusCode;
-        } else if (paidThrough + period < block.timestamp) {
-            return delinquentStatusCode;
-        } else {
-            return currentStatusCode;
-        }
+    function computeNextInstallment(
+        bool cureOnly,
+        uint256 installment
+    ) external pure returns (uint256) {
+        return cureOnly ? installment : installment + 1;
     }
 }
