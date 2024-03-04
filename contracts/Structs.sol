@@ -81,6 +81,11 @@ struct BorrowOffer {
 
 enum Side { BID, ASK }
 
+struct MarketOfferFee {
+    uint256 fee;
+    address recipient;
+}
+
 struct MarketOfferTerms {
     address currency;
     uint256 amount;
@@ -94,6 +99,7 @@ struct MarketOffer {
     address maker;
     Collateral collateral;
     MarketOfferTerms terms;
+    MarketOfferFee fee;
     uint256 expiration;
     uint256 salt;
 }

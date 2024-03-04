@@ -38,6 +38,10 @@ describe("Market Order", function () {
   let bidOffer: MarketOfferStruct;
   let askOffer: MarketOfferStruct;
 
+  let sellerBalance_before: bigint;
+  let buyerBalance_before: bigint;
+  let recipientBalance_before: bigint;
+
   beforeEach(async () => {
     const fixture = await getFixture();
     buyer = fixture.offerMaker;
@@ -82,16 +86,23 @@ describe("Market Order", function () {
         terms = {
           currency: testErc20,
           amount: principal,
+          fee: 200,
           withLoan: false,
           borrowAmount: 0,
           loanOfferHash: BYTES_ZERO
         }
+
+        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
+        buyerBalance_before = await testErc20.balanceOf(buyer);
+        sellerBalance_before = await testErc20.balanceOf(seller);
+        recipientBalance_before = await testErc20.balanceOf(recipient);
       });
 
       it("should sell an asset into a bid", async () => {
         bidOffer = {
           side: 0,
           maker: buyer,
+          recipient,
           terms: terms,
           collateral: collateral,
           salt: randomBytes(),
@@ -100,11 +111,6 @@ describe("Market Order", function () {
 
         const signature = await signMarketOffer(kettle, buyer, bidOffer);
 
-        // before checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
-        const sellerBalance_before = await testErc20.balanceOf(seller);
-        const buyerBalance_before = await testErc20.balanceOf(buyer);
-
         const txn = await kettle.connect(seller).marketOrder(
           tokenId,
           bidOffer,
@@ -112,16 +118,17 @@ describe("Market Order", function () {
           proof
         );
 
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.terms.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.terms.amount));
-
-        // log checks
         const { marketOrderLog } = await txn.wait().then(receipt => ({
           marketOrderLog: extractMarketOrderLog(receipt!)
         }));
 
+        // after checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(marketOrderLog.netAmount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.terms.amount));
+        expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + (BigInt(bidOffer.terms.amount) - marketOrderLog.netAmount));
+
+        // log checks
         expect(marketOrderLog.buyer).to.equal(buyer);
         expect(marketOrderLog.seller).to.equal(seller);
         expect(marketOrderLog.currency).to.equal(testErc20);
@@ -129,6 +136,7 @@ describe("Market Order", function () {
         expect(marketOrderLog.tokenId).to.equal(tokenId);
         expect(marketOrderLog.size).to.equal(1);
         expect(marketOrderLog.amount).to.equal(principal);
+        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.terms.fee)) / BigInt(10000));
       });
 
       it("should fail to sell an asset into a bid requiring a loan", async () => {  
@@ -137,6 +145,7 @@ describe("Market Order", function () {
         bidOffer = {
           side: 0,
           maker: buyer,
+          recipient,
           terms: terms,
           collateral: collateral,
           salt: randomBytes(),
@@ -157,6 +166,7 @@ describe("Market Order", function () {
         askOffer = {
           side: 1,
           maker: seller,
+          recipient,
           terms: terms,
           collateral: collateral,
           salt: randomBytes(),
@@ -176,17 +186,18 @@ describe("Market Order", function () {
           signature,
           proof
         );
-  
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.terms.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(bidOffer.terms.amount));
-  
-        // log checks
+
         const { marketOrderLog } = await txn.wait().then(receipt => ({
           marketOrderLog: extractMarketOrderLog(receipt!)
         }));
   
+        // after checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(marketOrderLog.netAmount));
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - BigInt(askOffer.terms.amount));
+        expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + (BigInt(askOffer.terms.amount) - marketOrderLog.netAmount));
+  
+        // log checks  
         expect(marketOrderLog.buyer).to.equal(buyer);
         expect(marketOrderLog.seller).to.equal(seller);
         expect(marketOrderLog.currency).to.equal(testErc20);
@@ -194,6 +205,7 @@ describe("Market Order", function () {
         expect(marketOrderLog.tokenId).to.equal(tokenId);
         expect(marketOrderLog.size).to.equal(1);
         expect(marketOrderLog.amount).to.equal(principal);
+        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.terms.fee)) / BigInt(10000));
       });
     })
   }

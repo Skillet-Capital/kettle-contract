@@ -7,6 +7,8 @@ error LienIsCurrent();
 error Unauthorized();
 error OnlyBorrower();
 
+error InvalidMarketOfferAmount();
+
 error OfferExpired();
 error InvalidLoanAmount();
 error InsufficientOffer();
