@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria } from "./Structs.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria, PaymentDeadline } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
@@ -29,6 +29,7 @@ contract Kettle is IKettle, OfferController {
         uint256 currentFee
     ) {
         principal = lien.state.principal;
+
         (
             pastInterest, 
             pastFee, 
@@ -36,37 +37,97 @@ contract Kettle is IKettle, OfferController {
             currentFee
         ) = FixedInterest.computeInterestAndFees(
             lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
+            lien.state.installment,
             lien.period,
+            lien.installments,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             principal
         );
+
         balance = principal + pastInterest + pastFee + currentInterest + currentFee;
     }
 
-    function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
-        return FixedInterest.computeNextPaymentDate(
-            lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
-            lien.period,
-            lien.gracePeriod
-        );
-    }
+    function lienStatus(Lien memory lien) 
+        public 
+        view 
+        returns (
+            LienStatus status,
+            uint256 balance,
+            PaymentDeadline memory delinquent, 
+            PaymentDeadline memory current
+        ) 
+    {
+        (
+            uint256 _balance,
+            uint256 principal,
+            uint256 pastInterest,
+            uint256 pastFee,
+            uint256 currentInterest,
+            uint256 currentFee
+        ) = payments(lien);
 
-    function lienStatus(Lien memory lien) public view returns (uint8) {
-        return FixedInterest.computeLienStatus(
-            lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
-            lien.period,
-            lien.gracePeriod,
-            uint8(LienStatus.DEFAULTED),
-            uint8(LienStatus.DELINQUENT),
-            uint8(LienStatus.CURRENT)
-        );
+        balance = _balance;
+
+        uint256 paidThrough = lien.startTime + (lien.state.installment * lien.period);
+        uint256 endTime = lien.startTime + (lien.period * lien.installments);
+        uint256 lastInstallmentStartTime = lien.startTime + (lien.period * (lien.installments - 1));
+
+        delinquent = PaymentDeadline({
+            periodStart: paidThrough,
+            deadline: paidThrough + lien.period + lien.gracePeriod,
+            principal: 0,
+            interest: pastInterest,
+            fee: pastFee
+        });
+
+        current = PaymentDeadline({
+            periodStart: paidThrough,
+            deadline: paidThrough + lien.period,
+            principal: 0,
+            interest: currentInterest,
+            fee: currentFee
+        });
+
+        // set defaulted status
+        status = LienStatus.CURRENT;
+        if (block.timestamp > paidThrough + lien.period + lien.gracePeriod) {
+            status = LienStatus.DEFAULTED;
+            if (block.timestamp > endTime) {
+                current.periodStart = 0;
+                current.deadline = 0;
+            } else {
+                current.periodStart = paidThrough + lien.period;
+                current.deadline = paidThrough + lien.period * 2;
+            }
+        }
+
+        else if (block.timestamp > paidThrough + lien.period) {
+            status = LienStatus.DELINQUENT;
+            if (block.timestamp > endTime) {
+                current.periodStart = 0;
+                current.deadline = 0;
+            } else {
+                current.periodStart = paidThrough + lien.period;
+                current.deadline = paidThrough + lien.period * 2;
+            }
+        } 
+        
+        else {
+            delinquent.periodStart = 0;
+            delinquent.deadline = 0;
+        }
+
+        // if loan is past endtime, delinquent owes principal
+        if (block.timestamp > endTime) {
+            delinquent.principal = principal;
+        } 
+        
+        // if loan is past last installment start time, current owes principal
+        else if (block.timestamp > lastInstallmentStartTime) {
+            current.principal = principal;
+        }
     }
 
     /*//////////////////////////////////////////////////
@@ -109,13 +170,14 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             amount,
             offer.terms.rate,
+            offer.terms.defaultRate,
             offer.fee.fee,
             offer.terms.period,
             offer.terms.gracePeriod,
-            offer.terms.tenor,
+            offer.terms.installments,
             block.timestamp,
             LienState({
-                paidThrough: block.timestamp,
+                installment: 0,
                 principal: amount
             })
         );
@@ -137,10 +199,11 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime
         );
     }
@@ -169,13 +232,14 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             offer.terms.amount,
             offer.terms.rate,
+            offer.terms.defaultRate,
             offer.fee.fee,
             offer.terms.period,
             offer.terms.gracePeriod,
-            offer.terms.tenor,
+            offer.terms.installments,
             block.timestamp,
             LienState({
-                paidThrough: block.timestamp,
+                installment: 0,
                 principal: offer.terms.amount
             })
         );
@@ -197,10 +261,11 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime
         );
     }
@@ -298,17 +363,14 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime,
             LienState({
-                paidThrough: FixedInterest.computePaidThrough(
-                    lien.state.paidThrough, 
-                    lien.period,
-                    cureOnly
-                ),
+                installment: FixedInterest.computeNextInstallment(cureOnly, lien.state.installment),
                 principal: updatedPrincipal
             })
         );
@@ -316,14 +378,15 @@ contract Kettle is IKettle, OfferController {
         liens[lienId] = keccak256(abi.encode(newLien));
 
         emit Payment(
-            lienId, 
+            lienId,
+            lien.state.installment,
             principal,
             pastInterest,
             pastFee,
             cureOnly ? 0 : currentInterest,
             cureOnly ? 0 : currentFee,
             newLien.state.principal,
-            newLien.state.paidThrough
+            newLien.state.installment
         );
     }
 
@@ -1093,6 +1156,7 @@ contract Kettle is IKettle, OfferController {
     function _lienIsDefaulted(
         Lien calldata lien
     ) internal view returns (bool) {
-        return (lien.state.paidThrough + lien.period + lien.gracePeriod) < block.timestamp;
+        uint256 paidThrough = lien.state.installment * lien.period;
+        return (paidThrough + lien.period + lien.gracePeriod) < block.timestamp;
     }
 }
