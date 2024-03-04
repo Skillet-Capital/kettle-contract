@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -32,9 +33,10 @@ describe("Sell In Lien", function () {
   let lender: Signer;
   let offerMaker: Signer;
   let recipient: Signer;
-
   let signers: Signer[];
+
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -53,6 +55,7 @@ describe("Sell In Lien", function () {
     signers = fixture.signers;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokens = fixture.tokens;
     tokenId = fixture.tokenId;

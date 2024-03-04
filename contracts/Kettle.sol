@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { ERC721 } from "solmate/src/tokens/ERC721.sol";
+import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import { ERC1155Holder } from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
@@ -15,15 +16,16 @@ import { SafeTransfer } from "./SafeTransfer.sol";
 import { Distributions } from "./Distributions.sol";
 import { OfferController } from "./OfferController.sol";
 
-contract Kettle is IKettle, OfferController, ERC721 {
+import { ILenderReceipt } from "./LenderReceipt.sol";
+
+contract Kettle is IKettle, OfferController, ERC721Holder, ERC1155Holder {
+    ILenderReceipt public immutable lenderReceipt;
 
     uint256 private _nextLienId = 1;
     mapping(uint256 => bytes32) public liens;
 
-    constructor() OfferController() ERC721("Kettle", "KETTLE") public {}
-
-    function tokenURI(uint256 id) public view override(ERC721) returns (string memory) {
-        return string(abi.encodePacked("https://kettle.finance/liens/"));
+    constructor(address _lenderReceiptAddress) OfferController() {
+        lenderReceipt = ILenderReceipt(_lenderReceiptAddress);
     }
 
     function payments(Lien memory lien) public view returns (
@@ -132,7 +134,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         _takeLoanOffer(lienId, offer, lien, signature);
 
         // mint receipt to lender
-        _safeMint(offer.lender, lienId);
+        lenderReceipt.mint(offer.lender, lienId);
 
         emit Borrow(
             lienId,
@@ -194,7 +196,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         // _takeBorrowOffer(offer, lienId);
 
         // mint receipt to lender
-        _safeMint(msg.sender, lienId);
+        lenderReceipt.mint(msg.sender, lienId);
 
         emit Borrow(
             lienId,
@@ -232,7 +234,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             uint256 currentFee
         ) = _payment(lien, lienId, _principal, false);
 
-        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest + currentInterest + principal);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lenderReceipt.ownerOf(lienId), pastInterest + currentInterest + principal);
         SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
@@ -248,7 +250,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             uint256 currentFee
         ) = _payment(lien, lienId, 0, false);
 
-        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest + currentInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lenderReceipt.ownerOf(lienId), pastInterest + currentInterest);
         SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
@@ -263,7 +265,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             ,
         ) = _payment(lien, lienId, 0, true);
 
-        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), pastInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lenderReceipt.ownerOf(lienId), pastInterest);
         SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
@@ -376,7 +378,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             pastFee,
             currentInterest,
             currentFee,
-            ownerOf(oldLienId),     // original lender
+            lenderReceipt.ownerOf(oldLienId),     // original lender
             lien.recipient,         // original recipient
             offer.lender,           // primary payer
             msg.sender,             // pays any remaining amount
@@ -384,7 +386,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         );
 
         // burn lender receipt
-        _burn(oldLienId);
+        lenderReceipt.burn(oldLienId);
         delete liens[oldLienId];
 
         emit Refinance(
@@ -417,11 +419,11 @@ contract Kettle is IKettle, OfferController, ERC721 {
         ) = _repay(lien, lienId);
 
         SafeTransfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        SafeTransfer.transferCurrency(lien.currency, msg.sender, ownerOf(lienId), principal + pastInterest + currentInterest);
+        SafeTransfer.transferCurrency(lien.currency, msg.sender, lenderReceipt.ownerOf(lienId), principal + pastInterest + currentInterest);
         SafeTransfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
     }
 
@@ -468,10 +470,10 @@ contract Kettle is IKettle, OfferController, ERC721 {
             revert LienIsCurrent();
         }
 
-        address lender = ownerOf(lienId);
+        address lender = lenderReceipt.ownerOf(lienId);
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
 
         SafeTransfer.transferToken(lien.collection, address(this), lender, lien.tokenId, lien.size);
@@ -697,7 +699,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             pastFee, 
             currentInterest, 
             currentFee, 
-            ownerOf(lienId), 
+            lenderReceipt.ownerOf(lienId), 
             lien.recipient, 
             msg.sender,                 // buyer pays primary amount
             msg.sender,                 // buyer pays residual amount
@@ -714,7 +716,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         );
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
 
         emit BuyInLien(
@@ -780,7 +782,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             pastFee,
             currentInterest,
             currentFee,
-            ownerOf(lienId),
+            lenderReceipt.ownerOf(lienId),
             lien.recipient,
             bidOffer.maker,                 // buyer pays primary amount
             msg.sender,                     // seller pays residual amount
@@ -791,7 +793,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         SafeTransfer.transferToken(lien.collection, address(this), bidOffer.maker, lien.tokenId, lien.size);
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
 
         emit SellInLien(
@@ -866,7 +868,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             pastFee,
             currentInterest,
             currentFee,
-            ownerOf(lienId),
+            lenderReceipt.ownerOf(lienId),
             lien.recipient,
             loanOffer.lender,               // new lender pays primary amount
             msg.sender,                     // buyer pays any remaining amount
@@ -880,7 +882,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         SafeTransfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, remainingAmountOwed);
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
 
         emit BuyInLienWithLoan(
@@ -957,7 +959,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
             pastFee,
             currentInterest,
             currentFee,
-            ownerOf(lienId),
+            lenderReceipt.ownerOf(lienId),
             lien.recipient,
             address(this),              // this is the primary payer
             msg.sender,                 // seller pays residual amount
@@ -965,7 +967,7 @@ contract Kettle is IKettle, OfferController, ERC721 {
         );
 
         // burn lender receipt
-        _burn(lienId);
+        lenderReceipt.burn(lienId);
         delete liens[lienId];
 
         emit SellInLienWithLoan(

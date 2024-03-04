@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -30,9 +31,10 @@ describe("Refinance", function () {
   let lender: Signer;
   let lender2: Signer;
   let recipient: Signer;
-
   let signers: Signer[];
+
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -52,6 +54,7 @@ describe("Refinance", function () {
     signers = fixture.signers;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokens = fixture.tokens;
     tokenId = fixture.tokenId;
@@ -108,6 +111,8 @@ describe("Refinance", function () {
 
     const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     borrowerBalanceBefore = await testErc20.balanceOf(borrower);
     recipientBalanceBefore = await testErc20.balanceOf(recipient);

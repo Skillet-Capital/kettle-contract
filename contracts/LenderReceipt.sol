@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: Skillet Group - LLC
+pragma solidity ^0.8.19;
+
+import { ERC721 } from "solmate/src/tokens/ERC721.sol";
+
+interface ILenderReceipt {
+    function ownerOf(uint256 tokenId) external returns (address);
+    function mint(address to, uint256 tokenId) external;
+    function burn(uint256 tokenId) external;
+}
+
+contract LenderReceipt is ERC721 {
+
+    uint256 public immutable ADMIN_ROLE = 0;
+    uint256 public immutable LENDER_RECEIPT_SUPPLIER = 1;
+    mapping(uint256 => mapping(address => uint256)) public _roles;
+
+    constructor() ERC721("KettleLenderReceipt", "KLR") {
+        _roles[ADMIN_ROLE][msg.sender] = 1;
+    }
+
+    function setRole(uint256 role, address account, uint256 value) public requiresRole(ADMIN_ROLE) {
+        _roles[role][account] = value;
+    }
+
+    function setSupplier(address supplier, uint256 value) public requiresRole(ADMIN_ROLE) {
+        _roles[LENDER_RECEIPT_SUPPLIER][supplier] = value;
+    }
+
+    function tokenURI(uint256 id) public pure override returns (string memory) {
+        return "";
+    }
+
+    function mint(
+        address to, 
+        uint256 tokenId
+    ) external requiresRole(LENDER_RECEIPT_SUPPLIER) {
+        _mint(to, tokenId);
+    }
+
+    function burn(
+        uint256 tokenId
+    ) external requiresRole(LENDER_RECEIPT_SUPPLIER) {
+        _burn(tokenId);
+    }
+
+    modifier requiresRole(uint256 role) {
+        require(_roles[role][msg.sender] == 1, "AccessControl");
+        _;
+    }
+}

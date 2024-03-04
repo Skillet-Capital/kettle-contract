@@ -11,7 +11,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -30,7 +31,9 @@ describe("Buy In Lien With Loan", function () {
   let recipient: Signer;
 
   let signers: Signer[];
+
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -50,6 +53,7 @@ describe("Buy In Lien With Loan", function () {
     signers = fixture.signers;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     testErc721 = fixture.testErc721;
     testErc20 = fixture.testErc20;
@@ -103,7 +107,7 @@ describe("Buy In Lien With Loan", function () {
       ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
     );
 
-    expect(await kettle.ownerOf(lienId)).to.equal(lender);
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     const askOfferTerms = {
       currency: testErc20,
@@ -249,7 +253,7 @@ describe("Buy In Lien With Loan", function () {
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
 
-            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
+            expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > borrowAmount > principal + interest", async () => {
@@ -298,7 +302,7 @@ describe("Buy In Lien With Loan", function () {
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
 
-            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
+            expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > principal > borrowAmount", async () => {
@@ -347,7 +351,7 @@ describe("Buy In Lien With Loan", function () {
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
 
-            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
+            expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
 
           it("ask > owed > borrowAmount > principal", async () => {
@@ -396,7 +400,7 @@ describe("Buy In Lien With Loan", function () {
             expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
             expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(borrower);
 
-            expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender2);
+            expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender2);
           });
         });
       }

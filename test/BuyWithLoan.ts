@@ -11,7 +11,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -30,6 +31,7 @@ describe("Buy With Loan", function () {
   let recipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -47,8 +49,8 @@ describe("Buy With Loan", function () {
     lender = fixture.lender;
     recipient = fixture.recipient;
     
-
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     testErc721 = fixture.testErc721;
 
@@ -184,7 +186,7 @@ describe("Buy With Loan", function () {
     
         expect(buyWithLoanLog.borrowAmount).to.equal(borrowLog.lien.principal).to.equal(borrowAmount);
 
-        expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender);
+        expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender);
       });
     
       it("should purchase an asset with an ask using a loan (amount > ask)", async () => {
@@ -228,7 +230,7 @@ describe("Buy With Loan", function () {
     
         expect(buyWithLoanLog.borrowAmount).to.equal(buyWithLoanLog.amount).to.equal(principal);
 
-        expect(await kettle.ownerOf(borrowLog.lienId)).to.equal(lender);
+        expect(await receipt.ownerOf(borrowLog.lienId)).to.equal(lender);
       });
     });
   }
