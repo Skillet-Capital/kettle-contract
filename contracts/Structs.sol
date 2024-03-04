@@ -39,13 +39,17 @@ struct Collateral {
     uint256 size;
 }
 
+struct Fee {
+    uint256 fee;
+    address recipient;
+}
+
 struct LoanOfferTerms {
     address currency;
     uint256 totalAmount;
     uint256 maxAmount;
     uint256 minAmount;
     uint256 rate;
-    uint256 fee;
     uint256 period;
     uint256 gracePeriod;
     uint256 tenor;
@@ -53,9 +57,9 @@ struct LoanOfferTerms {
 
 struct LoanOffer {
     address lender;
-    address recipient;
     Collateral collateral;
     LoanOfferTerms terms;
+    Fee fee;
     uint256 expiration;
     uint256 salt;
 }
@@ -64,7 +68,6 @@ struct BorrowOfferTerms {
     address currency;
     uint256 amount;
     uint256 rate;
-    uint256 fee;
     uint256 period;
     uint256 gracePeriod;
     uint256 tenor;
@@ -72,19 +75,14 @@ struct BorrowOfferTerms {
 
 struct BorrowOffer {
     address borrower;
-    address recipient;
     Collateral collateral;
     BorrowOfferTerms terms;
+    Fee fee;
     uint256 expiration;
     uint256 salt;
 }
 
 enum Side { BID, ASK }
-
-struct MarketOfferFee {
-    uint256 fee;
-    address recipient;
-}
 
 struct MarketOfferTerms {
     address currency;
@@ -99,7 +97,7 @@ struct MarketOffer {
     address maker;
     Collateral collateral;
     MarketOfferTerms terms;
-    MarketOfferFee fee;
+    Fee fee;
     uint256 expiration;
     uint256 salt;
 }

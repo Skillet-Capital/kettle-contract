@@ -101,7 +101,7 @@ contract Kettle is IKettle, OfferController {
 
         Lien memory lien = Lien(
             offer.lender,
-            offer.recipient,
+            offer.fee.recipient,
             borrower,
             offer.terms.currency,
             offer.collateral.collection,
@@ -109,7 +109,7 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             amount,
             offer.terms.rate,
-            offer.terms.fee,
+            offer.fee.fee,
             offer.terms.period,
             offer.terms.gracePeriod,
             offer.terms.tenor,
@@ -161,7 +161,7 @@ contract Kettle is IKettle, OfferController {
 
         Lien memory lien = Lien(
             msg.sender,
-            offer.recipient,
+            offer.fee.recipient,
             offer.borrower,
             offer.terms.currency,
             offer.collateral.collection,
@@ -169,7 +169,7 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             offer.terms.amount,
             offer.terms.rate,
-            offer.terms.fee,
+            offer.fee.fee,
             offer.terms.period,
             offer.terms.gracePeriod,
             offer.terms.tenor,
