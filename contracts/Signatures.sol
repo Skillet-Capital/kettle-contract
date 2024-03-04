@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
-import { Collateral, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
+import { Collateral, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer, MarketOfferFee } from "./Structs.sol";
 import { InvalidSignature, InvalidVParameter } from "./Errors.sol";
 
 import "hardhat/console.sol";
@@ -19,6 +19,7 @@ contract Signatures {
     bytes32 private immutable _BORROW_OFFER_TYPEHASH;
 
     bytes32 private immutable _MARKET_OFFER_TERMS_TYPEHASH;
+    bytes32 private immutable _MARKET_OFFER_FEE_TYPEHASH;
     bytes32 private immutable _MARKET_OFFER_TYPEHASH;
 
     string private constant _NAME = "Kettle";
@@ -36,6 +37,7 @@ contract Signatures {
             _BORROW_OFFER_TERMS_TYPEHASH,
             _BORROW_OFFER_TYPEHASH,
             _MARKET_OFFER_TERMS_TYPEHASH,
+            _MARKET_OFFER_FEE_TYPEHASH,
             _MARKET_OFFER_TYPEHASH
         ) = _createTypeHashes();
     }
@@ -63,6 +65,7 @@ contract Signatures {
             bytes32 borrowOfferTermsTypehash,
             bytes32 borrowOfferTypehash,
             bytes32 marketOfferTermsTypehash,
+            bytes32 marketOfferFeeTypehash,
             bytes32 marketOfferTypehash
         ) 
     {
@@ -151,6 +154,7 @@ contract Signatures {
             "MarketOfferTerms(",
             "address currency,",
             "uint256 amount,",
+            "uint256 fee,",
             "bool withLoan,",
             "uint256 borrowAmount,",
             "bytes32 loanOfferHash",
@@ -159,19 +163,31 @@ contract Signatures {
 
         marketOfferTermsTypehash = keccak256(marketOfferTermsTypestring);
 
+        bytes memory marketOfferFeeTypestring = bytes.concat(
+            "MarketOfferFee(",
+            "uint256 fee,",
+            "address recipient",
+            ")"
+        );
+
+        marketOfferFeeTypehash = keccak256(marketOfferFeeTypestring);
+
         marketOfferTypehash = keccak256(
             bytes.concat(
                 "MarketOffer(",
                 "uint8 side,",
                 "address maker,",
+                "address recipient,",
                 "Collateral collateral,",
                 "MarketOfferTerms terms,",
+                "MarketOfferFee fee,",
                 "uint256 expiration,",
                 "uint256 salt,",
                 "uint256 nonce",
                 ")",
                 collateralTypestring,
-                marketOfferTermsTypestring
+                marketOfferTermsTypestring,
+                marketOfferFeeTypestring
             )
         );
     }
@@ -297,6 +313,19 @@ contract Signatures {
             );
     }
 
+    function _hashMarketOfferFee(
+        MarketOfferFee calldata fee
+    ) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    _MARKET_OFFER_FEE_TYPEHASH,
+                    fee.fee,
+                    fee.recipient
+                )
+            );
+    }
+
     function _hashMarketOffer(
         MarketOffer calldata offer
     ) internal view returns (bytes32) {
@@ -308,6 +337,7 @@ contract Signatures {
                     offer.maker,
                     _hashCollateral(offer.collateral),
                     _hashMarketOfferTerms(offer.terms),
+                    _hashMarketOfferFee(offer.fee),
                     offer.expiration,
                     offer.salt,
                     nonces[offer.maker]

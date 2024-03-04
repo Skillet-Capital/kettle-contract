@@ -66,7 +66,8 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 amount
+        uint256 amount,
+        uint256 netAmount
     );
 
     event BuyWithLoan(
@@ -78,6 +79,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount
     );
 
@@ -90,6 +92,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,
@@ -108,6 +111,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount,
         uint256 balance,
         uint256 principal,
@@ -126,6 +130,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount
     );
 
@@ -138,6 +143,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,
@@ -156,6 +162,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount,
         uint256 balance,
         uint256 principal,
