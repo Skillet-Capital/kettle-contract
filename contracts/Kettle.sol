@@ -171,7 +171,7 @@ contract Kettle is IKettle, OfferController {
             amount,
             offer.terms.rate,
             offer.terms.defaultRate,
-            offer.fee.fee,
+            offer.fee.rate,
             offer.terms.period,
             offer.terms.gracePeriod,
             offer.terms.installments,
@@ -233,7 +233,7 @@ contract Kettle is IKettle, OfferController {
             offer.terms.amount,
             offer.terms.rate,
             offer.terms.defaultRate,
-            offer.fee.fee,
+            offer.fee.rate,
             offer.terms.period,
             offer.terms.gracePeriod,
             offer.terms.installments,
@@ -370,7 +370,12 @@ contract Kettle is IKettle, OfferController {
             lien.installments,
             lien.startTime,
             LienState({
-                installment: FixedInterest.computeNextInstallment(cureOnly, lien.state.installment),
+                installment: FixedInterest.computeNextInstallment(
+                    lien.startTime,
+                    lien.period,
+                    cureOnly, 
+                    lien.state.installment
+                ),
                 principal: updatedPrincipal
             })
         );
@@ -496,7 +501,8 @@ contract Kettle is IKettle, OfferController {
         delete liens[lienId];
 
         emit Repay(
-            lienId, 
+            lienId,
+            lien.state.installment,
             balance,
             principal,
             pastInterest,
@@ -548,7 +554,7 @@ contract Kettle is IKettle, OfferController {
             }
 
             // pay market fees (bidder pays fees)
-            uint256 netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.fee);
+            uint256 netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
             Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
             Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, netAmount);
@@ -567,7 +573,7 @@ contract Kettle is IKettle, OfferController {
         } else {
 
             // pay market fees (buyer pays fees)
-            uint256 netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.fee);
+            uint256 netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
             Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
             Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, netAmount);
@@ -617,7 +623,7 @@ contract Kettle is IKettle, OfferController {
         Transfer.transferCurrency(askOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
         // pay fees (contract pays fees) and pay seller net amount
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
         Transfer.transferCurrency(loanOffer.terms.currency, address(this), askOffer.maker, netAmount);
 
         // lock collateral
@@ -673,7 +679,7 @@ contract Kettle is IKettle, OfferController {
         Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // pay fees (contract pays fees) and pay seller net amount
-        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
         Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, netAmount);
 
         // lock collateral
@@ -723,7 +729,7 @@ contract Kettle is IKettle, OfferController {
         ) = payments(lien);
 
         // pay market fees (buyer pays fees)
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // net ask amount must be greater than amount owed
         if (netAmount < balance) {
@@ -800,7 +806,7 @@ contract Kettle is IKettle, OfferController {
         ) = payments(lien);
 
         // pay market fees (bidder pays fees)
-        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
         
         Distributions.distributeLoanPayments(
             lien.currency,
@@ -882,7 +888,7 @@ contract Kettle is IKettle, OfferController {
         Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
         // pay market fees (from this contract)
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < balance) {
@@ -968,7 +974,7 @@ contract Kettle is IKettle, OfferController {
         Transfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // pay market fees (from this contract)
-        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.fee);
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         (
             uint256 balance,
@@ -1156,7 +1162,7 @@ contract Kettle is IKettle, OfferController {
     function _lienIsDefaulted(
         Lien calldata lien
     ) internal view returns (bool) {
-        uint256 paidThrough = lien.state.installment * lien.period;
+        uint256 paidThrough = lien.startTime + (lien.state.installment * lien.period);
         return (paidThrough + lien.period + lien.gracePeriod) < block.timestamp;
     }
 }

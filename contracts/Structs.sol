@@ -48,9 +48,9 @@ struct Collateral {
     uint256 size;
 }
 
-struct Fee {
-    uint256 fee;
+struct FeeTerms {
     address recipient;
+    uint256 rate;
 }
 
 struct LoanOfferTerms {
@@ -69,7 +69,7 @@ struct LoanOffer {
     address lender;
     Collateral collateral;
     LoanOfferTerms terms;
-    Fee fee;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }
@@ -88,7 +88,7 @@ struct BorrowOffer {
     address borrower;
     Collateral collateral;
     BorrowOfferTerms terms;
-    Fee fee;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }
@@ -108,7 +108,7 @@ struct MarketOffer {
     address maker;
     Collateral collateral;
     MarketOfferTerms terms;
-    Fee fee;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }

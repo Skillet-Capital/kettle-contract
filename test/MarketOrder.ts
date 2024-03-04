@@ -13,7 +13,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -61,8 +61,9 @@ describe("Market Order", function () {
 
   for (const criteria of [0, 1]) {
     describe(`criteria: ${criteria == 0 ? "SIMPLE" : "PROOF"}`, () => {
-      let terms: MarketOfferTermsStruct;
       let collateral: CollateralStruct;
+      let terms: MarketOfferTermsStruct;
+      let fee: FeeTermsStruct;
 
       let proof: string[];
       let identifier: bigint;
@@ -86,10 +87,14 @@ describe("Market Order", function () {
         terms = {
           currency: testErc20,
           amount: principal,
-          fee: 200,
           withLoan: false,
           borrowAmount: 0,
           loanOfferHash: BYTES_ZERO
+        }
+
+        fee = {
+          recipient: recipient,
+          rate: 200
         }
 
         expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
@@ -102,9 +107,9 @@ describe("Market Order", function () {
         bidOffer = {
           side: 0,
           maker: buyer,
-          recipient,
-          terms: terms,
-          collateral: collateral,
+          terms,
+          collateral,
+          fee,
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
@@ -136,7 +141,7 @@ describe("Market Order", function () {
         expect(marketOrderLog.tokenId).to.equal(tokenId);
         expect(marketOrderLog.size).to.equal(1);
         expect(marketOrderLog.amount).to.equal(principal);
-        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.terms.fee)) / BigInt(10000));
+        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.fee.rate)) / BigInt(10000));
       });
 
       it("should fail to sell an asset into a bid requiring a loan", async () => {  
@@ -145,9 +150,9 @@ describe("Market Order", function () {
         bidOffer = {
           side: 0,
           maker: buyer,
-          recipient,
-          terms: terms,
-          collateral: collateral,
+          terms,
+          collateral,
+          fee,
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
@@ -166,9 +171,9 @@ describe("Market Order", function () {
         askOffer = {
           side: 1,
           maker: seller,
-          recipient,
-          terms: terms,
-          collateral: collateral,
+          terms,
+          collateral,
+          fee,
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
@@ -205,7 +210,7 @@ describe("Market Order", function () {
         expect(marketOrderLog.tokenId).to.equal(tokenId);
         expect(marketOrderLog.size).to.equal(1);
         expect(marketOrderLog.amount).to.equal(principal);
-        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.terms.fee)) / BigInt(10000));
+        expect(marketOrderLog.netAmount).to.equal(principal * (BigInt(10000) - BigInt(bidOffer.fee.rate)) / BigInt(10000));
       });
     })
   }

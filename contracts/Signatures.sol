@@ -3,7 +3,7 @@ pragma solidity ^0.8.19;
 
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
-import { Collateral, Fee, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
+import { Collateral, FeeTerms, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
 import { InvalidSignature, InvalidVParameter } from "./Errors.sol";
 
 import "hardhat/console.sol";
@@ -12,7 +12,7 @@ contract Signatures {
     bytes32 private immutable _EIP_712_DOMAIN_TYPEHASH;
     
     bytes32 private immutable _COLLATERAL_TYPEHASH;
-    bytes32 private immutable _FEE_TYPEHASH;
+    bytes32 private immutable _FEE_TERMS_TYPEHASH;
 
     bytes32 private immutable _LOAN_OFFER_TERMS_TYPEHASH;
     bytes32 private immutable _LOAN_OFFER_TYPEHASH;
@@ -33,7 +33,7 @@ contract Signatures {
         (
             _EIP_712_DOMAIN_TYPEHASH,
             _COLLATERAL_TYPEHASH,
-            _FEE_TYPEHASH,
+            _FEE_TERMS_TYPEHASH,
             _LOAN_OFFER_TERMS_TYPEHASH,
             _LOAN_OFFER_TYPEHASH,
             _BORROW_OFFER_TERMS_TYPEHASH,
@@ -61,7 +61,7 @@ contract Signatures {
         returns (
             bytes32 eip712DomainTypehash,
             bytes32 collateralTypehash,
-            bytes32 feeTypehash,
+            bytes32 feeTermsTypehash,
             bytes32 loanOfferTermsTypehash,
             bytes32 loanOfferTypehash,
             bytes32 borrowOfferTermsTypehash,
@@ -92,14 +92,14 @@ contract Signatures {
 
         collateralTypehash = keccak256(collateralTypestring);
 
-        bytes memory feeTypestring = bytes.concat(
-            "Fee(",
-            "uint256 fee,",
-            "address recipient",
+        bytes memory feeTermsTypestring = bytes.concat(
+            "FeeTerms(",
+            "address recipient,",
+            "uint256 rate",
             ")"
         );
 
-        feeTypehash = keccak256(feeTypestring);
+        feeTermsTypehash = keccak256(feeTermsTypestring);
 
         bytes memory loanOfferTermsTypestring = bytes.concat(
             "LoanOfferTerms(",
@@ -123,14 +123,14 @@ contract Signatures {
                 "address lender,",
                 "Collateral collateral,",
                 "LoanOfferTerms terms,",
-                "Fee fee,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
                 "uint256 salt,",
                 "uint256 nonce",
                 ")",
                 collateralTypestring,
-                loanOfferTermsTypestring,
-                feeTypestring
+                feeTermsTypestring,
+                loanOfferTermsTypestring
             )
         );
 
@@ -154,13 +154,13 @@ contract Signatures {
                 "address borrower,",
                 "Collateral collateral,",
                 "BorrowOfferTerms terms,",
-                "Fee fee,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
                 "uint256 salt",
                 ")",
                 collateralTypestring,
-                borrowOfferTermsTypestring,
-                feeTypestring
+                feeTermsTypestring,
+                borrowOfferTermsTypestring
             )
         );
 
@@ -183,14 +183,14 @@ contract Signatures {
                 "address maker,",
                 "Collateral collateral,",
                 "MarketOfferTerms terms,",
-                "Fee fee,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
                 "uint256 salt,",
                 "uint256 nonce",
                 ")",
                 collateralTypestring,
-                marketOfferTermsTypestring,
-                feeTypestring
+                feeTermsTypestring,
+                marketOfferTermsTypestring
             )
         );
     }
@@ -228,14 +228,14 @@ contract Signatures {
     }
 
     function _hashFee(
-        Fee calldata fee
+        FeeTerms calldata fee
     ) internal view returns (bytes32) {
         return
             keccak256(
                 abi.encode(
-                    _FEE_TYPEHASH,
-                    fee.fee,
-                    fee.recipient
+                    _FEE_TERMS_TYPEHASH,
+                    fee.recipient,
+                    fee.rate
                 )
             );
     }

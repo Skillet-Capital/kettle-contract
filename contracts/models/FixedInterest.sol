@@ -70,9 +70,14 @@ library FixedInterest {
     }
 
     function computeNextInstallment(
+        uint256 startTime,
+        uint256 period,
         bool cureOnly,
         uint256 installment
-    ) external pure returns (uint256) {
-        return cureOnly ? installment : installment + 1;
+    ) external view returns (uint256) {
+        uint256 paidThrough = startTime + (installment * period);
+        if (block.timestamp > paidThrough + period) return cureOnly ? installment + 1 : installment + 2;
+        if (block.timestamp > paidThrough) return installment + 1;
+        return installment;
     }
 }
