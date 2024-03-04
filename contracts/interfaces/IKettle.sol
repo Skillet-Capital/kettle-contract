@@ -36,6 +36,7 @@ interface IKettle {
 
     event Repay(
         uint256 indexed lienId,
+        uint256 installment,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,

@@ -41,13 +41,14 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       size: lien.size,
       principal: lien.principal,
       rate: lien.rate,
-      period: lien.period,
-      tenor: lien.tenor,
-      startTime: lien.startTime,
+      defaultRate: lien.defaultRate,
       fee: lien.fee,
+      period: lien.period,
       gracePeriod: lien.gracePeriod,
+      installments: lien.installments,
+      startTime: lien.startTime,
       state: {
-        paidThrough: lien.startTime,
+        installment: 0,
         principal: lien.principal
       }
     }
@@ -63,13 +64,14 @@ export function extractPaymentLog(receipt: ContractTransactionReceipt) {
 
   return {
     lienId: payment.lienId,
+    installment: payment.installment,
     principal: payment.principal,
     pastInterest: payment.pastInterest,
     pastFee: payment.pastFee,
     currentInterest: payment.currentInterest,
     currentFee: payment.currentFee,
     newPrincipal: payment.newPrincipal,
-    paidThrough: payment.paidThrough
+    newInstallment: payment.newInstallment
   }
 }
 
@@ -82,6 +84,7 @@ export function extractRepayLog(receipt: ContractTransactionReceipt) {
 
   return {
     lienId: repay.lienId,
+    installment: repay.installment,
     balance: repay.balance,
     principal: repay.principal,
     pastInterest: repay.pastInterest,
@@ -241,6 +244,7 @@ export function extractMarketOrderLog(receipt: ContractTransactionReceipt) {
     collection: log.collection,
     tokenId: log.tokenId,
     size: log.size,
-    amount: log.amount
+    amount: log.amount,
+    netAmount: log.netAmount
   }
 }
