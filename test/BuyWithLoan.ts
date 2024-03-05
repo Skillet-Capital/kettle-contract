@@ -1,7 +1,7 @@
 import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 
 import { expect } from "chai";
-import { Signer } from "ethers";
+import { ContractTransactionResponse, Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { signLoanOffer, signMarketOffer } from "./helpers";
@@ -13,7 +13,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -28,6 +28,7 @@ describe("Buy With Loan", function () {
 
   let lender: Signer;
   let recipient: Signer;
+  let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
 
@@ -46,18 +47,19 @@ describe("Buy With Loan", function () {
     
     lender = fixture.lender;
     recipient = fixture.recipient;
+    marketFeeRecipient = fixture.marketFeeRecipient;
     
-
     kettle = fixture.kettle;
 
     testErc721 = fixture.testErc721;
-
-    principal = fixture.principal;
     testErc20 = fixture.testErc20;
 
+    principal = fixture.principal;
     tokenId = fixture.tokenId;
     tokens = fixture.tokens;
   });
+
+  let txn: ContractTransactionResponse;
 
   let lienId: string | number | bigint;
   let lien: LienStruct;
@@ -68,6 +70,16 @@ describe("Buy With Loan", function () {
   let loanOfferSignature: string;
   let askOfferSignature: string;
 
+  let borrowAmount: bigint;
+  let marketFeeAmount: bigint;
+
+  let sellerBalance_before: bigint;
+  let buyerBalance_before: bigint;
+  
+  let lenderBalance_before: bigint;  
+  let recipientBalance_before: bigint;
+  let marketFeeRecipientBalance_before: bigint;
+
   beforeEach(async () => {
 
     const loanOfferTerms: LoanOfferTermsStruct = {
@@ -75,11 +87,16 @@ describe("Buy With Loan", function () {
       totalAmount: principal,
       maxAmount: principal,
       minAmount: 0,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
       rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
+      defaultRate: "200",
+      period: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS,
+      installments: 12
+    }
+
+    const loanOfferFee: FeeTermsStruct = {
+      recipient: recipient,
+      rate: "200"
     }
 
     const collateral: CollateralStruct = {
@@ -91,14 +108,14 @@ describe("Buy With Loan", function () {
 
     loanOffer = {
       lender: lender,
-      recipient: recipient,
       terms: loanOfferTerms,
-      collateral,
+      collateral: { ...collateral },
+      fee: loanOfferFee,
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
 
-    const askOfferTerms = {
+    const askOfferTerms: MarketOfferTermsStruct = {
       currency: testErc20,
       amount: principal * 3n / 2n,
       withLoan: false,
@@ -106,10 +123,16 @@ describe("Buy With Loan", function () {
       loanOfferHash: BYTES_ZERO
     }
 
+    const askOfferFee: FeeTermsStruct = {
+      recipient: marketFeeRecipient,
+      rate: 200
+    }
+
     askOffer = {
       side: 1,
       maker: seller,
       terms: askOfferTerms,
+      fee: askOfferFee,
       collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
@@ -117,6 +140,13 @@ describe("Buy With Loan", function () {
 
     loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
     askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
+
+    sellerBalance_before = await testErc20.balanceOf(seller);
+    buyerBalance_before = await testErc20.balanceOf(buyer);
+
+    lenderBalance_before = await testErc20.balanceOf(lender);
+    recipientBalance_before = await testErc20.balanceOf(recipient);
+    marketFeeRecipientBalance_before = await testErc20.balanceOf(marketFeeRecipient);
   })
 
   for (const criteria of [0, 1]) {
@@ -143,38 +173,29 @@ describe("Buy With Loan", function () {
         askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
       });
 
-      it("should purchase an asset with an ask using a loan (amount < ask)", async () => {
-        const borrowAmount = principal / 2n;
-    
-        // before checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
-        const sellerBalance_before = await testErc20.balanceOf(seller);
-        const buyerBalance_before = await testErc20.balanceOf(buyer);
-        const lenderBalance_before = await testErc20.balanceOf(lender);
-    
-        const txn = await kettle.connect(buyer).buyWithLoan(
-          tokenId,
-          borrowAmount,
-          loanOffer,
-          askOffer,
-          loanOfferSignature,
-          askOfferSignature,
-          proof,
-          proof
-        );
-    
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(askOffer.terms.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(askOffer.terms.amount) - borrowAmount));
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - borrowAmount);
-    
-        // logging checks
+      afterEach(async () => {
         const { borrowLog, buyWithLoanLog } = await txn.wait().then(receipt => ({
           borrowLog: extractBorrowLog(receipt!),
           buyWithLoanLog: extractBuyWithLoanLog(receipt!)
         }));
-    
+
+        const netAmount = BigInt(askOffer.terms.amount) - marketFeeAmount;
+        const netPurchaseAmount = BigInt(askOffer.terms.amount) - buyWithLoanLog.borrowAmount;
+
+        // balance checks
+        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + netAmount);
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - netPurchaseAmount);
+        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - buyWithLoanLog.borrowAmount);
+        expect(await testErc20.balanceOf(marketFeeRecipient)).to.equal(marketFeeRecipientBalance_before + marketFeeAmount);
+
+        // if borrow amount is greater than ask amount, borrow should max at ask amount
+        if (BigInt(borrowAmount) > BigInt(askOffer.terms.amount)) {
+          expect(buyWithLoanLog.borrowAmount).to.equal(askOffer.terms.amount);
+          expect(buyWithLoanLog.amount).to.equal(askOffer.terms.amount);
+        }
+
+        // logging checks
         expect(borrowLog.lienId).to.equal(buyWithLoanLog.lienId);
         expect(borrowLog.lien.borrower).to.equal(buyWithLoanLog.buyer).to.equal(buyer);
         expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
@@ -183,21 +204,35 @@ describe("Buy With Loan", function () {
         expect(borrowLog.lien.principal).to.equal(buyWithLoanLog.borrowAmount);
         expect(buyWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
     
-        expect(buyWithLoanLog.borrowAmount).to.equal(borrowLog.lien.principal).to.equal(borrowAmount);
-    
+        expect(buyWithLoanLog.borrowAmount)
+          .to.equal(borrowLog.lien.principal)
+          .to.equal(borrowAmount > BigInt(askOffer.terms.amount) ? askOffer.terms.amount : borrowAmount);
+      })
+
+      it("should purchase an asset with an ask using a loan (borrow amount < ask)", async () => {
+        borrowAmount = principal / 2n;
+        marketFeeAmount = BigInt(askOffer.terms.amount) * BigInt(askOffer.fee.rate) / 10_000n;
+        
+        txn = await kettle.connect(buyer).buyWithLoan(
+          tokenId,
+          borrowAmount,
+          loanOffer,
+          askOffer,
+          loanOfferSignature,
+          askOfferSignature,
+          proof,
+          proof
+        );    
       });
     
-      it("should purchase an asset with an ask using a loan (amount > ask)", async () => {
-        const borrowAmount = principal * 2n;
-        
-        // before checks
-        const sellerBalance_before = await testErc20.balanceOf(seller);
-        const buyerBalance_before = await testErc20.balanceOf(buyer);
-        const lenderBalance_before = await testErc20.balanceOf(lender);
-        
+      it("should purchase an asset with an ask using a loan (borrow amount > ask)", async () => {        
         askOffer.terms.amount = principal;
         askOfferSignature = await signMarketOffer(kettle, seller, askOffer);
-        const txn = await kettle.connect(buyer).buyWithLoan(
+
+        borrowAmount = askOffer.terms.amount * 2n;
+        marketFeeAmount = BigInt(askOffer.terms.amount) * BigInt(askOffer.fee.rate) / 10_000n;
+
+        txn = await kettle.connect(buyer).buyWithLoan(
           tokenId,
           borrowAmount,
           loanOffer,
@@ -207,27 +242,6 @@ describe("Buy With Loan", function () {
           proof,
           proof
         );
-    
-        // after checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + principal);
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before); // no change
-        expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - principal);
-    
-        const { borrowLog, buyWithLoanLog } = await txn.wait().then(receipt => ({
-          borrowLog: extractBorrowLog(receipt!),
-          buyWithLoanLog: extractBuyWithLoanLog(receipt!)
-        }));
-    
-        expect(borrowLog.lienId).to.equal(buyWithLoanLog.lienId);
-        expect(borrowLog.lien.borrower).to.equal(buyWithLoanLog.buyer).to.equal(buyer);
-        expect(borrowLog.lien.lender).to.equal(loanOffer.lender);
-        expect(borrowLog.lien.collection).to.equal(buyWithLoanLog.collection);
-        expect(borrowLog.lien.tokenId).to.equal(buyWithLoanLog.tokenId);
-        expect(borrowLog.lien.principal).to.equal(buyWithLoanLog.borrowAmount);
-        expect(buyWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
-    
-        expect(buyWithLoanLog.borrowAmount).to.equal(buyWithLoanLog.amount).to.equal(principal);
       });
     });
   }

@@ -233,7 +233,6 @@ describe("Buy In Lien With Loan", function () {
 
               // balance checks
               const netAmount = BigInt(askOffer.terms.amount) - marketFeeAmount;
-              expect(buyInLienWithLoanLog.netAmount).to.equal(netAmount);
               const netPurchaseAmount = BigInt(askOffer.terms.amount) - BigInt(borrowAmount);
 
               expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
@@ -244,6 +243,7 @@ describe("Buy In Lien With Loan", function () {
               expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + pastFee + currentFee);
               expect(await testErc20.balanceOf(marketFeeRecipient)).to.equal(marketFeeRecipientBalance_before + marketFeeAmount);
 
+              expect(buyInLienWithLoanLog.netAmount).to.equal(netAmount);
               expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
               expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
               expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
