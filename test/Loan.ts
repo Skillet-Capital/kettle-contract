@@ -318,6 +318,30 @@ describe("Loan", function () {
           currentFee: paymentsResponse.currentFee
         });
       });
+
+      it("should fail to make payment if last installment", async () => {
+        for (let i = 0; i < 11; i++) {
+          await time.increase(BigInt(HALF_MONTH_SECONDS));
+          const txn = await kettle.connect(borrower).interestPayment(
+            lienId, 
+            lien
+          );
+    
+          const paymentLog = await txn.wait().then(receipt => extractPaymentLog(receipt!));
+    
+          lien.state = {
+            installment: paymentLog.newInstallment,
+            principal: paymentLog.newPrincipal
+          }
+    
+          await time.increase(BigInt(HALF_MONTH_SECONDS))
+        }
+
+        await expect(kettle.connect(borrower).interestPayment(
+          lienId, 
+          lien
+        )).to.be.revertedWithCustomError(kettle, "RepayOnLastInstallment");
+      });
     
       it('should repay lien after tenor', async () => {
         for (let i = 0; i < 11; i++) {

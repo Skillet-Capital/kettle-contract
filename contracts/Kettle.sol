@@ -5,7 +5,7 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria, PaymentDeadline } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount } from "./Errors.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
@@ -335,6 +335,10 @@ contract Kettle is IKettle, OfferController {
         uint256 currentInterest,
         uint256 currentFee
     ) {
+        if ((lien.state.installment + 1) == lien.installments) {
+            revert RepayOnLastInstallment();
+        }
+
         (
             ,
             ,
