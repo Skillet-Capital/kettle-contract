@@ -25,7 +25,7 @@ contract CollateralVerifier {
      * - If criteria is PROOF, the provided Merkle proof must be valid for the given identifier and asset token ID.
      * - If criteria is SIMPLE, the asset token ID must match the specified identifier.
      *
-     * @throws InvalidCriteria if the collateral verification fails based on the specified criteria.
+     * @dev throws InvalidCriteria if the collateral verification fails based on the specified criteria.
      */
     function _verifyCollateral(
         Criteria criteria,
