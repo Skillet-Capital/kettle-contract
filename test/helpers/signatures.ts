@@ -1,7 +1,5 @@
-import { ethers } from "hardhat";
 import { Addressable, Signer } from "ethers";
-import { Kettle, LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, BorrowOfferStruct } from "../../typechain-types/contracts/Kettle";
-
+import { Kettle, LoanOfferStruct, MarketOfferStruct, BorrowOfferStruct } from "../../typechain-types/contracts/Kettle";
 
 const collateralTypes = [
   { name: "collection", type: "address" },
@@ -119,9 +117,6 @@ export async function signBorrowOffer(
     BorrowOfferTerms: borrowOfferTermsTypes,
     FeeTerms: feeTermsTypes
   }
-
-  const encoder = new ethers.TypedDataEncoder(types);
-  console.log(encoder.encodeType("BorrowOffer"));
 
   return await borrower.signTypedData(domain, types, { 
     ...offer,

@@ -8,127 +8,19 @@ import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side,
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
-import { FixedInterest } from "./models/FixedInterest.sol";
-import { Transfer } from "./Transfer.sol";
-import { Distributions } from "./Distributions.sol";
 import { OfferController } from "./OfferController.sol";
+import { StatusViewer } from "./StatusViewer.sol";
 
-contract Kettle is IKettle, OfferController {
+import { FixedInterest } from "./models/FixedInterest.sol";
+import { Distributions } from "./Distributions.sol";
+import { Transfer } from "./Transfer.sol";
+
+contract Kettle is IKettle, OfferController, StatusViewer {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
     constructor() OfferController() public {}
-
-    function payments(Lien memory lien) public view returns (
-        uint256 balance,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
-    ) {
-        principal = lien.state.principal;
-
-        (
-            pastInterest, 
-            pastFee, 
-            currentInterest,
-            currentFee
-        ) = FixedInterest.computeInterestAndFees(
-            lien.startTime,
-            lien.state.installment,
-            lien.period,
-            lien.installments,
-            lien.rate,
-            lien.defaultRate,
-            lien.fee,
-            principal
-        );
-
-        balance = principal + pastInterest + pastFee + currentInterest + currentFee;
-    }
-
-    function lienStatus(Lien memory lien) 
-        public 
-        view 
-        returns (
-            LienStatus status,
-            uint256 balance,
-            PaymentDeadline memory delinquent, 
-            PaymentDeadline memory current
-        ) 
-    {
-        (
-            uint256 _balance,
-            uint256 principal,
-            uint256 pastInterest,
-            uint256 pastFee,
-            uint256 currentInterest,
-            uint256 currentFee
-        ) = payments(lien);
-
-        balance = _balance;
-
-        uint256 paidThrough = lien.startTime + (lien.state.installment * lien.period);
-        uint256 endTime = lien.startTime + (lien.period * lien.installments);
-        uint256 lastInstallmentStartTime = lien.startTime + (lien.period * (lien.installments - 1));
-
-        delinquent = PaymentDeadline({
-            periodStart: paidThrough,
-            deadline: paidThrough + lien.period + lien.gracePeriod,
-            principal: 0,
-            interest: pastInterest,
-            fee: pastFee
-        });
-
-        current = PaymentDeadline({
-            periodStart: paidThrough,
-            deadline: paidThrough + lien.period,
-            principal: 0,
-            interest: currentInterest,
-            fee: currentFee
-        });
-
-        // set defaulted status
-        status = LienStatus.CURRENT;
-        if (block.timestamp > paidThrough + lien.period + lien.gracePeriod) {
-            status = LienStatus.DEFAULTED;
-            if (block.timestamp > endTime) {
-                current.periodStart = 0;
-                current.deadline = 0;
-            } else {
-                current.periodStart = paidThrough + lien.period;
-                current.deadline = paidThrough + lien.period * 2;
-            }
-        }
-
-        else if (block.timestamp > paidThrough + lien.period) {
-            status = LienStatus.DELINQUENT;
-            if (block.timestamp > endTime) {
-                current.periodStart = 0;
-                current.deadline = 0;
-            } else {
-                current.periodStart = paidThrough + lien.period;
-                current.deadline = paidThrough + lien.period * 2;
-            }
-        } 
-        
-        else {
-            delinquent.periodStart = 0;
-            delinquent.deadline = 0;
-        }
-
-        // if loan is past endtime, delinquent owes principal
-        if (block.timestamp > endTime) {
-            delinquent.principal = principal;
-        } 
-        
-        // if loan is past last installment start time, current owes principal
-        else if (block.timestamp > lastInstallmentStartTime) {
-            current.principal = principal;
-        }
-    }
 
     /*//////////////////////////////////////////////////
                     BORROW FLOWS
@@ -889,38 +781,22 @@ contract Kettle is IKettle, OfferController {
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
 
         // transfer loan principal from lender and rest of amount from buyer to the contract
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), _borrowAmount);
-        Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
+        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), _borrowAmount);
+        Transfer.transferCurrency(lien.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
         // pay market fees (from this contract)
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+        uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < balance) {
             revert InsufficientAskAmount();
         }
 
-        Distributions.distributeLoanPayments(
-            lien.currency,
-            _borrowAmount,                  // distribute new principal from new lender to old lender
-            balance,
-            principal,
-            pastInterest,
-            pastFee,
-            currentInterest,
-            currentFee,
-            lien.lender,
-            lien.recipient,
-            loanOffer.lender,               // new lender pays primary amount
-            address(this),                  // this pays any remaining amount
-            lien.borrower                   // borrower receives net principal
-        );
-
-        // remaining amount owed by buyer is the diff between net amount and max of borrow or balance
-        // buyer already pays off lender if borrow amount is less than amount owed
-        // if borrow amount is greater than amount owed, then buyer pays rest
-        uint256 remainingAmountOwed = netAmount - Math.max(_borrowAmount, balance);
-        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, remainingAmountOwed);
+        // transfer net principal to seller and pay balance and fees
+        uint256 netPrincipal = netAmount - balance;
+        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
+        Transfer.transferCurrency(lien.currency, address(this), lien.lender, principal + currentInterest + pastInterest);
+        Transfer.transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
 
         delete liens[lienId];
 
@@ -972,7 +848,7 @@ contract Kettle is IKettle, OfferController {
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
         // borrow from loan offer
-        newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
+        newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, bidOffer.maker, loanOfferSignature);
 
         // transfer loan principal and rest of bid to this
         Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);

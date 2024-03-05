@@ -5,7 +5,7 @@ import {
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Signer, parseUnits } from "ethers";
+import { ContractTransactionResponse, Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
 import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
@@ -17,7 +17,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -25,10 +25,12 @@ const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
 describe("Sell With Loan", function () {
 
-  let lender: Signer;
   let seller: Signer;
   let buyer: Signer;
+
+  let lender: Signer;
   let recipient: Signer;
+  let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
 
@@ -41,10 +43,13 @@ describe("Sell With Loan", function () {
 
   beforeEach(async () => {
     const fixture = await getFixture();
-    lender = fixture.lender;
+
     seller = fixture.borrower;
     buyer = fixture.offerMaker;
+
+    lender = fixture.lender;
     recipient = fixture.recipient;
+    marketFeeRecipient = fixture.marketFeeRecipient;
 
     kettle = fixture.kettle;
 
@@ -56,48 +61,53 @@ describe("Sell With Loan", function () {
     testErc20 = fixture.testErc20;
   });
 
+  let txn: ContractTransactionResponse;
+
   let lienId: string | number | bigint;
   let lien: LienStruct;
 
   let loanOffer: LoanOfferStruct;
   let bidOffer: MarketOfferStruct;
 
-  let loanOfferTerms: LoanOfferTermsStruct;
-  let marketOfferTerms: MarketOfferTermsStruct;
-
-  let collateral: CollateralStruct;
-
   let loanOfferSignature: string;
   let bidOfferSignature: string;
 
+  let sellerBalance_before: bigint;
+  let buyerBalance_before: bigint;
+  
+  let lenderBalance_before: bigint;  
+  let marketFeeRecipientBalance_before: bigint;
+
   beforeEach(async () => {
 
-    collateral = {
+    const loanOfferTerms: LoanOfferTermsStruct = {
+      currency: testErc20,
+      totalAmount: principal,
+      maxAmount: principal,
+      minAmount: 0,
+      rate: "1000",
+      defaultRate: "200",
+      period: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS,
+      installments: 12
+    }
+
+    const loanOfferFee: FeeTermsStruct = {
+      recipient: recipient,
+      rate: "200"
+    }
+
+    const collateral: CollateralStruct = {
       collection: testErc721,
       criteria: 0,
       identifier: tokenId,
       size: 1
     }
 
-    loanOfferTerms = {
-      currency: testErc20,
-      totalAmount: principal,
-      maxAmount: principal,
-      minAmount: principal,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
-      rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
-    }
-
     loanOffer = {
       lender: lender,
-      recipient,
-      terms: {
-        ...loanOfferTerms,
-        minAmount: 0
-      },
+      terms: loanOfferTerms,
+      fee: loanOfferFee,
       collateral: { ...collateral},
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
@@ -105,7 +115,7 @@ describe("Sell With Loan", function () {
 
     const loanOfferHash = await kettle.hashLoanOffer(loanOffer);
 
-    marketOfferTerms = {
+    const bidOfferTerms: MarketOfferTermsStruct = {
       currency: testErc20,
       amount: principal,
       withLoan: true,
@@ -113,10 +123,16 @@ describe("Sell With Loan", function () {
       loanOfferHash
     }
 
+    const bidOfferFeeTerms: FeeTermsStruct = {
+      recipient: marketFeeRecipient,
+      rate: 200
+    }
+
     bidOffer = {
       side: 0,
       maker: buyer,
-      terms: marketOfferTerms,
+      terms: bidOfferTerms,
+      fee: bidOfferFeeTerms,
       collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
@@ -124,6 +140,12 @@ describe("Sell With Loan", function () {
 
     loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
     bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+
+    sellerBalance_before = await testErc20.balanceOf(seller);
+    buyerBalance_before = await testErc20.balanceOf(buyer);
+
+    lenderBalance_before = await testErc20.balanceOf(lender);
+    marketFeeRecipientBalance_before = await testErc20.balanceOf(marketFeeRecipient);
   })
 
   for (const criteria of [0, 1]) {
@@ -146,37 +168,22 @@ describe("Sell With Loan", function () {
         bidOffer.collateral.criteria = criteria;
         bidOffer.collateral.identifier = identifier;
 
-        loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
-
         bidOffer.terms.loanOfferHash = await kettle.hashLoanOffer(loanOffer);
         bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+        loanOfferSignature = await signLoanOffer(kettle, lender, loanOffer);
       });
 
-      it("should sell an asset into a bid using a loan", async () => {
+      afterEach(async () => {
+        const marketFeeAmount = BigInt(bidOffer.terms.amount) * BigInt(bidOffer.fee.rate) / 10_000n;
+        const netSellAmount = BigInt(bidOffer.terms.amount) - marketFeeAmount;
+        const netPurchaseAmount = BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount);
 
-        // before checks
-        expect(await testErc721.ownerOf(tokenId)).to.equal(seller);
-        const sellerBalance_before = await testErc20.balanceOf(seller);
-        const buyerBalance_before = await testErc20.balanceOf(buyer);
-        const lenderBalance_before = await testErc20.balanceOf(lender);
-    
-        const txn = await kettle.connect(seller).sellWithLoan(
-          tokenId,
-          loanOffer,
-          bidOffer,
-          loanOfferSignature,
-          bidOfferSignature,
-          proof,
-          proof
-        );
-    
-        // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
-    
-        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + BigInt(bidOffer.terms.amount));
-        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - (BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount)));
+        expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + netSellAmount);
+        expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - netPurchaseAmount);
         expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before - BigInt(bidOffer.terms.borrowAmount));
-    
+        expect(await testErc20.balanceOf(marketFeeRecipient)).to.equal(marketFeeRecipientBalance_before + marketFeeAmount);
+
         // log checks
         const { borrowLog, sellWithLoanLog } = await txn.wait().then(receipt => ({
           borrowLog: extractBorrowLog(receipt!),
@@ -195,6 +202,19 @@ describe("Sell With Loan", function () {
         expect(borrowLog.lien.size).to.equal(sellWithLoanLog.size).to.equal(loanOffer.collateral.size);
         expect(borrowLog.lien.principal).to.equal(sellWithLoanLog.borrowAmount).to.equal(bidOffer.terms.borrowAmount);
         expect(sellWithLoanLog.amount).to.equal(sellWithLoanLog.amount).to.equal(bidOffer.terms.amount).to.equal(principal);
+        expect(sellWithLoanLog.netAmount).to.equal(netSellAmount);
+      })
+
+      it("should sell an asset into a bid using a loan", async () => {    
+        txn = await kettle.connect(seller).sellWithLoan(
+          tokenId,
+          loanOffer,
+          bidOffer,
+          loanOfferSignature,
+          bidOfferSignature,
+          proof,
+          proof
+        );
       })
     });
   }
