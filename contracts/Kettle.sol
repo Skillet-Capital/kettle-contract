@@ -14,8 +14,8 @@ import { CollateralVerifier } from "./CollateralVerifier.sol";
 import { OfferMatcher } from "./OfferMatcher.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
-import { Distributions } from "./Distributions.sol";
-import { Transfer } from "./Transfer.sol";
+import { Distributions } from "./lib/Distributions.sol";
+import { Transfer } from "./lib/Transfer.sol";
 
 /**
  * @title Kettle Lending and Marketplace Contract
