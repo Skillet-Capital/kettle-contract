@@ -4,18 +4,25 @@ pragma solidity ^0.8.19;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria, PaymentDeadline } from "./Structs.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, PaymentDeadline } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { OfferController } from "./OfferController.sol";
 import { StatusViewer } from "./StatusViewer.sol";
+import { CollateralVerifier } from "./CollateralVerifier.sol";
+import { OfferMatcher } from "./OfferMatcher.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { Distributions } from "./Distributions.sol";
 import { Transfer } from "./Transfer.sol";
 
-contract Kettle is IKettle, OfferController, StatusViewer {
+/**
+ * @title Kettle Lending and Marketplace Contract
+ * @author diamondjim.eth
+ * @notice Provides lending and marketplace functionality for ERC721 and ERC1155
+ */
+contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
@@ -25,7 +32,17 @@ contract Kettle is IKettle, OfferController, StatusViewer {
     /*//////////////////////////////////////////////////
                     BORROW FLOWS
     //////////////////////////////////////////////////*/
-
+    
+    /**
+     * @notice Allows a borrower to borrow funds and use a specified asset as collateral.
+     * @param offer The details of the loan offer, including collateral, terms, etc.
+     * @param amount The amount of funds to borrow.
+     * @param tokenId The identifier of the asset used as collateral.
+     * @param borrower The address of the borrower. If set to address(0), the sender's address is used.
+     * @param signature The signature provided by the borrower to verify the loan agreement.
+     * @param proof An array of proof elements to verify the collateral ownership.
+     * @return lienId The identifier of the lien created for the borrowed funds.
+     */
     function borrow(
         LoanOffer calldata offer,
         uint256 amount,
@@ -44,6 +61,15 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         Transfer.transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
     }
 
+    /**
+     * @notice Internal function to handle the borrowing process and create a lien for the borrowed funds.
+     * @param offer The details of the loan offer, including collateral, terms, etc.
+     * @param amount The amount of funds to borrow.
+     * @param tokenId The identifier of the asset used as collateral.
+     * @param borrower The address of the borrower.
+     * @param signature The signature provided by the borrower to verify the loan agreement.
+     * @return lienId The identifier of the newly created lien for the borrowed funds.
+     */
     function _borrow(
         LoanOffer calldata offer,
         uint256 amount,
@@ -100,6 +126,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         );
     }
 
+    /**
+     * @notice Allows a lender to provide a loan based on a specified borrow offer.
+     * @param offer The details of the borrow offer, including collateral, terms, etc.
+     * @param signature The signature provided by the lender to verify the loan agreement.
+     * @return lienId The identifier of the newly created lien for the loaned funds.
+     */
     function loan(
         BorrowOffer calldata offer,
         bytes calldata signature
@@ -109,7 +141,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
         Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
-
+    /**
+     * @dev Internal function to handle the loan process and create a lien for the loaned funds.
+     * @param offer The details of the borrow offer, including collateral, terms, etc.
+     * @param signature The signature provided by the lender to verify the loan agreement.
+     * @return lienId The identifier of the newly created lien for the loaned funds.
+     */
     function _loan(
         BorrowOffer calldata offer,
         bytes calldata signature
@@ -167,54 +204,65 @@ contract Kettle is IKettle, OfferController, StatusViewer {
                     PAYMENT FLOWS
     //////////////////////////////////////////////////*/
 
+    /**
+     * @notice Allows the borrower to make a principal payment towards an existing loan.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param _principal The amount of principal to be paid.
+     * @param lien The details of the loan (calldata).
+     */
     function principalPayment(
         uint256 lienId,
         uint256 _principal,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-       (
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = _payment(lien, lienId, _principal, false);
+       (uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, _principal, false);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest + principal);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
+    /**
+     * @notice Allows the borrower to make an interest payment towards an existing loan.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the loan (calldata).
+     */
     function interestPayment(
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (
-            ,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest,
-            uint256 currentFee
-        ) = _payment(lien, lienId, 0, false);
+        (, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, 0, false);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest + currentInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
+    /**
+     * @notice Allows the borrower to make a cure payment towards an existing loan to cure a default.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the loan (calldata).
+     */
     function curePayment(
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (
-            ,
-            uint256 pastInterest, 
-            uint256 pastFee,
-            ,
-        ) = _payment(lien, lienId, 0, true);
+        (, uint256 pastInterest, uint256 pastFee,,) = _payment(lien, lienId, 0, true);
 
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, pastInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
+    /**
+     * @dev Internal function to process a payment for an existing loan, including principal, interest, and fees.
+     * @param lien The details of the loan (calldata).
+     * @param lienId The identifier of the lien representing the loan.
+     * @param _principal The amount of principal to be paid.
+     * @param cureOnly A flag indicating whether the payment is a cure payment only (boolean).
+     * @return principal The paid principal amount.
+     * @return pastInterest The accrued interest from previous installments.
+     * @return pastFee The accrued fee from previous installments.
+     * @return currentInterest The interest for the current installment.
+     * @return currentFee The fee for the current installment.
+     */
     function _payment(
         Lien calldata lien,
         uint256 lienId,
@@ -227,25 +275,21 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         uint256 currentInterest,
         uint256 currentFee
     ) {
+        // check if this the last installment to prevent repayment on the last installment
         if ((lien.state.installment + 1) == lien.installments) {
             revert RepayOnLastInstallment();
         }
 
-        (
-            ,
-            ,
-            pastInterest, 
-            pastFee, 
-            currentInterest, 
-            currentFee
-        ) = payments(lien);
+        // calculate accrued interest and fees from previous and current installments
+        (,, pastInterest, pastFee, currentInterest, currentFee) = payments(lien);
 
-        // calculate minimum amount to be paid
+        // calculate minimum interest amount to be paid
         uint256 minimumPayment = pastInterest + pastFee;
         if (!cureOnly) {
             minimumPayment += currentInterest + currentFee;
         }
 
+        // determine the actual principal to be paid, considering the requested amount and remaining principal
         uint256 principal = Math.min(_principal, lien.state.principal);
         uint256 updatedPrincipal = lien.state.principal - principal;
 
@@ -296,6 +340,16 @@ contract Kettle is IKettle, OfferController, StatusViewer {
                     REFINANCE FLOWS
     //////////////////////////////////////////////////*/
 
+    /**
+     * @notice Allows the borrower to refinance an existing loan with a new loan offer.
+     * @param oldLienId The identifier of the existing lien being refinanced.
+     * @param amount The amount of funds to borrow through the refinance.
+     * @param lien The details of the existing loan (calldata).
+     * @param offer The details of the new loan offer, including collateral, terms, etc.
+     * @param signature The signature provided by the borrower to verify the new loan agreement.
+     * @param proof An array of proof elements to verify the collateral ownership.
+     * @return newLienId The identifier of the newly created lien for the refinanced funds.
+     */
     function refinance(
         uint256 oldLienId,
         uint256 amount,
@@ -303,26 +357,18 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         LoanOffer calldata offer,
         bytes calldata signature,
         bytes32[] calldata proof
-    ) public 
-      validateLien(lien, oldLienId) 
-      lienIsCurrent(lien) 
-      onlyBorrower(lien )
-      returns (uint256 newLienId) 
-    {
+    ) public validateLien(lien, oldLienId) lienIsCurrent(lien) onlyBorrower(lien )returns (uint256 newLienId) {
+        
         _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, lien.tokenId, proof);
         _matchLoanOfferWithLien(offer, lien);
         
+        // borrow funds through the refinance and get the new lien identifier
         newLienId = _borrow(offer, amount, lien.tokenId, msg.sender, signature);
 
-        (
-            uint256 balance,
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = payments(lien);
+        // get payment details of the existing lien
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
         
+        // distribute loan payments from new lender to old lender and pay or transfer net funds from borrower
         Distributions.distributeLoanPayments(
             lien.currency,
             amount,                 // distribute new principal
@@ -358,23 +404,32 @@ contract Kettle is IKettle, OfferController, StatusViewer {
                     REPAY FLOWS
     //////////////////////////////////////////////////*/
 
+    /**
+     * @notice Allows the borrower to repay loan
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the loan (calldata).
+     */
     function repay(
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (
-            uint256 principal,
-            uint256 pastInterest,
-            uint256 pastFee,
-            uint256 currentInterest,
-            uint256 currentFee
-        ) = _repay(lien, lienId);
+        (uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _repay(lien, lienId);
 
         Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.lender, principal + pastInterest + currentInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
+    /**
+     * @dev Internal function to handle the repayment process and remove the lien after repayment.
+     * @param lien The details of the loan (calldata).
+     * @param lienId The identifier of the lien representing the loan.
+     * @return principal The amount of principal repaid.
+     * @return pastInterest The amount of past interest repaid.
+     * @return pastFee The amount of past fee repaid.
+     * @return currentInterest The amount of current interest repaid.
+     * @return currentFee The amount of current fee repaid.
+     */
     function _repay(
         Lien calldata lien,
         uint256 lienId
@@ -385,15 +440,9 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         uint256 currentInterest,
         uint256 currentFee
     ) {
+        // get payment details of the existing lien
         uint256 balance;
-        (
-            balance,
-            principal,
-            pastInterest, 
-            pastFee, 
-            currentInterest, 
-            currentFee
-        ) = payments(lien);
+        (balance, principal, pastInterest, pastFee, currentInterest, currentFee) = payments(lien);
 
         delete liens[lienId];
 
@@ -413,10 +462,16 @@ contract Kettle is IKettle, OfferController, StatusViewer {
                     DEFAULT FLOWS
     //////////////////////////////////////////////////*/
 
+    /**
+     * @notice Allows the lender to claim the collateral when a lien has defaulted.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the loan (calldata).
+     */
     function claim(
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) {
+        // check if the lien is defaulted; if not, revert
         if (!_lienIsDefaulted(lien)) {
             revert LienIsCurrent();
         }
@@ -433,65 +488,63 @@ contract Kettle is IKettle, OfferController, StatusViewer {
     //////////////////////////////////////////////////*/
 
     /**
-     * @dev Execute market order
+     * @notice Allows users to execute a market order, either as a bidder (BID) or as an asker (ASK).
+     * @param tokenId The identifier of the asset involved in the market order.
+     * @param offer The details of the market offer, including collateral, terms, etc.
+     * @param signature The signature provided by the maker to verify the market offer.
+     * @param proof An array of proof elements to verify the collateral ownership.
+     * @return netAmount The net amount transferred after considering market fees.
      */
      function marketOrder(
         uint256 tokenId,
         MarketOffer calldata offer,
         bytes calldata signature,
         bytes32[] calldata proof
-     ) public {
+     ) public returns (uint256 netAmount) {
 
         _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
         _takeMarketOffer(offer, signature);
         
         if (offer.side == Side.BID) {
-            if (offer.terms.withLoan) {
-                revert BidRequiresLoan();
-            }
+            if (offer.terms.withLoan) revert BidRequiresLoan();
 
             // pay market fees (bidder pays fees)
-            uint256 netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
+            netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
             Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
             Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, netAmount);
-            
-            emit MarketOrder(
-                offer.maker,
-                msg.sender,
-                offer.terms.currency,
-                offer.collateral.collection,
-                tokenId,
-                offer.collateral.size,
-                offer.terms.amount,
-                netAmount
-            );
 
         } else {
-
             // pay market fees (buyer pays fees)
-            uint256 netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
+            netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
             Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
             Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, netAmount);
-            
-            emit MarketOrder(
-                msg.sender,
-                offer.maker,
-                offer.terms.currency,
-                offer.collateral.collection,
-                tokenId,
-                offer.collateral.size,
-                offer.terms.amount,
-                netAmount
-            );
         }
+
+        emit MarketOrder(
+            offer.side == Side.BID ? offer.maker : msg.sender,
+            offer.side == Side.BID ? msg.sender : offer.maker,
+            offer.terms.currency,
+            offer.collateral.collection,
+            tokenId,
+            offer.collateral.size,
+            offer.terms.amount,
+            netAmount
+        );
     }
 
     /**
-     * @dev Purchase an asset with a loan offer
-     * @param loanOffer loan offer
-     * @param askOffer ask offer
+     * @notice Allows a buyer to purchase an asset with a loan, using a loan offer and a corresponding market ask offer.
+     * @param tokenId The identifier of the asset involved in the transaction.
+     * @param amount The amount of the loan requested by the buyer.
+     * @param loanOffer The details of the loan offer, including collateral, terms, etc.
+     * @param askOffer The details of the market ask offer, including collateral, terms, etc.
+     * @param loanOfferSignature The signature provided by the borrower to verify the loan offer.
+     * @param askOfferSignature The signature provided by the maker to verify the market ask offer.
+     * @param loanProof An array of proof elements to verify the collateral ownership for the loan offer.
+     * @param askProof An array of proof elements to verify the collateral ownership for the ask offer.
+     * @return lienId The identifier of the newly created lien representing the loan.
      */
     function buyWithLoan(
         uint256 tokenId,
@@ -515,13 +568,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
         lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender, loanOfferSignature);
 
-        // transfer loan principal from lender and rest of amount from buyer to this contract
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), _borrowAmount);
-        Transfer.transferCurrency(askOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
+        // transfer loan principal from lender and rest of amount from buyer to seller
+        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
+        Transfer.transferCurrency(askOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
 
-        // pay fees (contract pays fees) and pay seller net amount
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
-        Transfer.transferCurrency(loanOffer.terms.currency, address(this), askOffer.maker, netAmount);
+        // retrieve fees from seller
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, askOffer.maker, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // lock collateral
         Transfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
@@ -541,9 +593,15 @@ contract Kettle is IKettle, OfferController, StatusViewer {
     }
 
     /**
-     * @dev Sell an asset into a bid with a loan
-     * @param loanOffer loan offer
-     * @param bidOffer ask offer
+     * @notice Allows a seller to initiate a loan through a loan offer and sell an asset with a corresponding market bid offer.
+     * @param tokenId The identifier of the asset involved in the transaction.
+     * @param loanOffer The details of the loan offer, including collateral, terms, etc.
+     * @param bidOffer The details of the market bid offer, including collateral, terms, etc.
+     * @param loanOfferSignature The signature provided by the borrower to verify the loan offer.
+     * @param bidOfferSignature The signature provided by the bidder to verify the market bid offer.
+     * @param loanProof An array of proof elements to verify the collateral ownership for the loan offer.
+     * @param bidProof An array of proof elements to verify the collateral ownership for the bid offer.
+     * @return lienId The identifier of the newly created lien representing the loan.
      */
     function sellWithLoan(
         uint256 tokenId,
@@ -557,6 +615,7 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         if (bidOffer.side != Side.BID) revert OfferNotBid();
         if (!bidOffer.terms.withLoan) revert BidNotWithLoan();
 
+        // verify the loan offer hash matches the bid offer's expected loan offer hash
         bytes32 _loanOfferHash = _hashLoanOffer(loanOffer);
         if (!(bidOffer.terms.loanOfferHash == _loanOfferHash)) {
             revert BidCannotBorrow();
@@ -571,13 +630,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         // start loan (borrow amount specified in bid)
         lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker, loanOfferSignature);
 
-        // transfer loan principal from lender and rest of amount from bidder to this contract
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
-        Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+        // transfer loan principal from lender and rest of amount from bidder to seller
+        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, msg.sender, bidOffer.terms.borrowAmount);
+        Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, msg.sender, bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
-        // pay fees (contract pays fees) and pay seller net amount
-        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
-        Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, netAmount);
+        // retrieve fees from seller
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, msg.sender, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // lock collateral
         Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, loanOffer.collateral.size);
@@ -597,10 +655,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
     }
 
     /**
-     * @dev Purchase an asset in a lien, closes lien, and transfers asset to buyer
-     * @param lienId lien identifier
-     * @param lien the active lien
-     * @param askOffer ask offer
+     * @notice Allows a buyer to purchase an asset within an existing lien using a market ask offer.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the lien, including borrower, lender, terms, etc.
+     * @param askOffer The details of the market ask offer, including collateral, terms, etc.
+     * @param askOfferSignature The signature provided by the maker to verify the market ask offer.
+     * @param proof An array of proof elements to verify the collateral ownership for the market ask offer.
      */
     function buyInLien(
         uint256 lienId,
@@ -616,17 +676,11 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         _matchMarketOfferWithLien(askOffer, lien);
         _takeMarketOffer(askOffer, askOfferSignature);
 
-        (
-            uint256 balance,
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = payments(lien);
-
         // pay market fees (buyer pays fees)
         uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+
+        // retrieve payment details from the lien
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
         // net ask amount must be greater than amount owed
         if (netAmount < balance) {
@@ -674,10 +728,12 @@ contract Kettle is IKettle, OfferController, StatusViewer {
     }
 
     /**
-     * @dev Sell an asset in a lien with a bid
-     * @param lienId lien identifier
-     * @param lien the active lien
-     * @param bidOffer bid offer
+     * @notice Allows a borrower to sell an asset within an existing lien using a market bid offer.
+     * @param lienId The identifier of the lien representing the loan.
+     * @param lien The details of the lien, including borrower, lender, terms, etc.
+     * @param bidOffer The details of the market bid offer, including collateral, terms, etc.
+     * @param bidOfferSignature The signature provided by the bidder to verify the market bid offer.
+     * @param proof An array of proof elements to verify the collateral ownership for the market bid offer.
      */
     function sellInLien(
         uint256 lienId,
@@ -693,17 +749,11 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         _matchMarketOfferWithLien(bidOffer, lien);
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
-        (
-            uint256 balance,
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = payments(lien);
-
         // pay market fees (bidder pays fees)
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
+
+        // retrieve payment details from the lien
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
         
         Distributions.distributeLoanPayments(
             lien.currency,
@@ -745,6 +795,19 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         );
     }
 
+    /**
+     * @notice Allows a buyer to purchase an asset within an existing lien using a market ask offer and a new loan offer.
+     * @param lienId The identifier of the existing lien representing the loan.
+     * @param amount The amount to borrow in the new loan offer.
+     * @param lien The details of the existing lien, including borrower, lender, terms, etc.
+     * @param loanOffer The details of the new loan offer, including collateral, terms, etc.
+     * @param askOffer The details of the market ask offer, including collateral, terms, etc.
+     * @param loanOfferSignature The signature provided by the borrower to verify the new loan offer.
+     * @param askOfferSignature The signature provided by the maker to verify the market ask offer.
+     * @param loanProof An array of proof elements to verify the collateral ownership for the new loan offer.
+     * @param askProof An array of proof elements to verify the collateral ownership for the market ask offer.
+     * @return newLienId The identifier of the new lien representing the new loan.
+     */
     function buyInLienWithLoan(
         uint256 lienId,
         uint256 amount,
@@ -767,15 +830,6 @@ contract Kettle is IKettle, OfferController, StatusViewer {
 
         _takeMarketOffer(askOffer, askOfferSignature);
 
-        (
-            uint256 balance,
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = payments(lien);
-
         // start new loan
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
@@ -786,6 +840,9 @@ contract Kettle is IKettle, OfferController, StatusViewer {
 
         // pay market fees (from this contract)
         uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+
+        // retrieve payment details from the lien
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < balance) {
@@ -821,6 +878,18 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         );
     }
 
+    /**
+     * @notice Allows a borrower to sell an asset within an existing lien using a market bid offer and a new loan offer.
+     * @param lienId The identifier of the existing lien representing the loan.
+     * @param lien The details of the existing lien, including borrower, lender, terms, etc.
+     * @param loanOffer The details of the new loan offer, including collateral, terms, etc.
+     * @param bidOffer The details of the market bid offer, including collateral, terms, etc.
+     * @param loanOfferSignature The signature provided by the borrower to verify the new loan offer.
+     * @param bidOfferSignature The signature provided by the maker to verify the market bid offer.
+     * @param loanProof An array of proof elements to verify the collateral ownership for the new loan offer.
+     * @param bidProof An array of proof elements to verify the collateral ownership for the market bid offer.
+     * @return newLienId The identifier of the new lien representing the new loan.
+     */
     function sellInLienWithLoan(
         uint256 lienId,
         Lien calldata lien,
@@ -857,14 +926,8 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         // pay market fees (from this contract)
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
-        (
-            uint256 balance,
-            uint256 principal,
-            uint256 pastInterest, 
-            uint256 pastFee, 
-            uint256 currentInterest, 
-            uint256 currentFee
-        ) = payments(lien);
+        // retrieve payment details from the lien
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
         Distributions.distributeLoanPayments(
             lien.currency,
@@ -905,18 +968,15 @@ contract Kettle is IKettle, OfferController, StatusViewer {
         );
     }
 
-    function _computeFeeAndNetAmount(
-        uint256 amount,
-        uint256 fee
-    ) internal returns (uint256 feeAmount, uint256 netAmount) {
-        uint256 feeAmount = amount * fee / 10_000;
-        if (feeAmount > amount) {
-            revert InvalidMarketOfferAmount();
-        }
-
-        netAmount = amount - feeAmount;
-    }
-
+    /**
+     * @dev Calculates and transfers market fees.
+     * @param currency The address of the currency used for the transaction.
+     * @param payer The address of the payer who will cover the fees.
+     * @param recipient The address of the recipient who will receive the fees.
+     * @param amount The total amount involved in the transaction.
+     * @param fee The fee rate (in basis points) to be applied to the amount.
+     * @return netAmount The net amount after deducting the fees.
+     */
     function _payMarketFees(
         address currency,
         address payer,
@@ -931,78 +991,6 @@ contract Kettle is IKettle, OfferController, StatusViewer {
 
         Transfer.transferCurrency(currency, payer, recipient, feeAmount);
         netAmount = amount - feeAmount;
-    }
-
-    /*//////////////////////////////////////////////////
-                    MATCHING POLICIES
-    //////////////////////////////////////////////////*/
-
-    function _verifyCollateral(
-        Criteria criteria,
-        uint256 identifier,
-        uint256 tokenId,
-        bytes32[] calldata proof
-    ) internal view {
-        if (criteria == Criteria.PROOF) {
-            if (proof.length == 0 || !MerkleProof.verifyCalldata(proof, bytes32(identifier), keccak256(abi.encode(bytes32(tokenId))))) {
-                revert InvalidCriteria();
-            }
-        } else {
-            if (!(tokenId == identifier)) {
-                revert InvalidCriteria();
-            }
-        }
-    }
-
-    function _matchMarketOfferWithLoanOffer(
-        MarketOffer calldata marketOffer,
-        LoanOffer calldata loanOffer
-    ) internal pure returns (bool) {
-        if (marketOffer.collateral.collection != loanOffer.collateral.collection) {
-            revert CollectionMismatch();
-        }
-
-        if (marketOffer.terms.currency != loanOffer.terms.currency) {
-            revert CurrencyMismatch();
-        }
-
-        if (marketOffer.collateral.size != loanOffer.collateral.size) {
-            revert SizeMismatch();
-        }
-    }
-
-    function _matchMarketOfferWithLien(
-        MarketOffer calldata marketOffer,
-        Lien calldata lien
-    ) internal pure returns (bool) {
-        if (marketOffer.collateral.collection != lien.collection) {
-            revert CollectionMismatch();
-        }
-
-        if (marketOffer.terms.currency != lien.currency) {
-            revert CurrencyMismatch();
-        }
-
-        if (marketOffer.collateral.size != lien.size) {
-            revert SizeMismatch();
-        }
-    }
-
-    function _matchLoanOfferWithLien(
-        LoanOffer calldata loanOffer,
-        Lien calldata lien
-    ) internal pure returns (bool) {
-        if (loanOffer.collateral.collection != lien.collection) {
-            revert CollectionMismatch();
-        }
-
-        if (loanOffer.terms.currency != lien.currency) {
-            revert CurrencyMismatch();
-        }
-
-        if (loanOffer.collateral.size != lien.size) {
-            revert SizeMismatch();
-        }
     }
 
     /*//////////////////////////////////////////////////
