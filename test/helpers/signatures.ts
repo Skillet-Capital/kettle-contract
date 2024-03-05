@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { Addressable, Signer } from "ethers";
-import { Kettle, LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../../typechain-types/contracts/Kettle";
+import { Kettle, LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, BorrowOfferStruct } from "../../typechain-types/contracts/Kettle";
 
 
 const collateralTypes = [
@@ -27,6 +27,16 @@ const loanOfferTermsTypes = [
   { name: "installments", type: "uint256" }
 ];
 
+const borrowOfferTermsTypes = [
+  { name: "currency", type: "address" },
+  { name: "amount", type: "uint256" },
+  { name: "rate", type: "uint256" },
+  { name: "defaultRate", type: "uint256" },
+  { name: "period", type: "uint256" },
+  { name: "gracePeriod", type: "uint256" },
+  { name: "installments", type: "uint256" }
+];
+
 const marketOfferTermsTypes = [
   { name: "currency", type: "address" },
   { name: "amount", type: "uint256" },
@@ -34,7 +44,6 @@ const marketOfferTermsTypes = [
   { name: "borrowAmount", type: "uint256" },
   { name: "loanOfferHash", type: "bytes32" }
 ];
-
 
 export async function signLoanOffer(
   kettle: Kettle,
@@ -80,6 +89,56 @@ export async function signLoanOffer(
       recipient: await (loanOffer.fee.recipient as Addressable).getAddress(),
     },
     nonce: await kettle.nonces(lender),
+  });
+}
+
+export async function signBorrowOffer(
+  kettle: Kettle,
+  borrower: Signer,
+  offer: BorrowOfferStruct 
+) {
+
+  const domain = {
+    name: 'Kettle',
+    version: '3',
+    chainId: 1,
+    verifyingContract: await kettle.getAddress()
+  }
+
+  const types = {
+    BorrowOffer: [
+      { name: 'borrower', type: 'address' },
+      { name: 'collateral', type: 'Collateral' },
+      { name: 'terms', type: 'BorrowOfferTerms' },
+      { name: 'fee', type: 'FeeTerms' },
+      { name: 'expiration', type: 'uint256' },
+      { name: 'salt', type: 'uint256' },
+      { name: 'nonce', type: 'uint256' }
+    ],
+    Collateral: collateralTypes,
+    BorrowOfferTerms: borrowOfferTermsTypes,
+    FeeTerms: feeTermsTypes
+  }
+
+  const encoder = new ethers.TypedDataEncoder(types);
+  console.log(encoder.encodeType("BorrowOffer"));
+
+  return await borrower.signTypedData(domain, types, { 
+    ...offer,
+    borrower: await borrower.getAddress(),
+    collateral: {
+      ...offer.collateral,
+      collection: await (offer.collateral.collection as Addressable).getAddress()
+    },
+    terms: {
+      ...offer.terms,
+      currency: await (offer.terms.currency as Addressable).getAddress(),
+    },
+    fee: {
+      ...offer.fee,
+      recipient: await (offer.fee.recipient as Addressable).getAddress(),
+    },
+    nonce: await kettle.nonces(borrower),
   });
 }
 
