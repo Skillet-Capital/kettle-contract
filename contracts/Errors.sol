@@ -31,3 +31,5 @@ error SizeMismatch();
 
 error InvalidSignature();
 error InvalidVParameter();
+
+error RepayOnLastInstallment();
