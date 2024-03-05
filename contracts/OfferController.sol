@@ -74,7 +74,6 @@ contract OfferController is IOfferController, Signatures {
      *
      * @param lienId Unique identifier of the lien associated with the borrow offer.
      * @param offer Borrow offer details to validate and process.
-     * @param lien Lien details associated with the offer.
      * @param signature Signature to validate the authenticity of the borrow offer.
      *
      * Requirements:
