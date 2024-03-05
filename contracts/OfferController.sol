@@ -84,7 +84,6 @@ contract OfferController is IOfferController, Signatures {
     function _takeBorrowOffer(
         uint256 lienId,
         BorrowOffer calldata offer,
-        Lien memory lien,
         bytes calldata signature
     ) internal {
         

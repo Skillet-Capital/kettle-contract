@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { Strings } from '@openzeppelin/contracts/utils/Strings.sol';
+import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 import { ERC721 } from "solmate/src/tokens/ERC721.sol";
 
 interface ILenderReceipt {

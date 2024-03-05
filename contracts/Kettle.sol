@@ -2,10 +2,9 @@
 pragma solidity ^0.8.19;
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, PaymentDeadline } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, MarketOffer, Side } from "./Structs.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, BidCannotBorrow, BidRequiresLoan, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { OfferController } from "./OfferController.sol";
@@ -30,7 +29,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
-    constructor(address _lenderReceiptAddress) OfferController() public {
+    constructor(address _lenderReceiptAddress) public OfferController() {
         lenderReceipt = ILenderReceipt(_lenderReceiptAddress);
     }
 
@@ -184,7 +183,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
 
-        _takeBorrowOffer(lienId, offer, lien, signature);
+        _takeBorrowOffer(lienId, offer, signature);
 
         // mint lender receipt
         lenderReceipt.mint(msg.sender, lienId);

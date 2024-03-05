@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { Lien, LienState, LienStatus, PaymentDeadline } from "./Structs.sol";
+import { Lien, LienStatus, PaymentDeadline } from "./Structs.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
 
 /**

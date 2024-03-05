@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "solmate/src/utils/SignedWadMath.sol";
+import { wadMul, wadDiv } from "solmate/src/utils/SignedWadMath.sol";
 
 /**
  * @title Kettle FixedInterest Model
@@ -99,7 +99,7 @@ library FixedInterest {
      *
      * @return The next installment number based on the provided parameters and the current timestamp.
      *
-     * @dev The function calculates the next installment based on the provided start time, installment period, and the current timestamp.
+     * @dev The function calculates next installment based on the start time, installment period, and current timestamp
      * It considers whether only cure installments should be considered or both cure and regular installments.
      * The next installment is determined by comparing the current timestamp with the scheduled payment dates.
      * If the current timestamp is beyond the scheduled payment date, it increments the installment number accordingly.
