@@ -5,7 +5,7 @@ import {
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { Signer, parseUnits } from "ethers";
+import { ContractTransactionResponse, Contract, Signer, parseUnits } from "ethers";
 
 import { getFixture } from './setup';
 import { signLoanOffer } from "./helpers/signatures";
@@ -17,7 +17,7 @@ import {
   TestERC721,
   Kettle
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct } from "../typechain-types/contracts/Kettle";
+import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -61,19 +61,30 @@ describe("Refinance", function () {
     testErc20 = fixture.testErc20;
   });
 
+  let txn: ContractTransactionResponse;
+
   let lienId: string | number | bigint;
   let lien: LienStruct;
 
   let refinanceOffer: LoanOfferStruct;
   let terms: LoanOfferTermsStruct;
   let collateral: CollateralStruct;
+  let fee: FeeTermsStruct;
 
   let signature: string;
 
-  let borrowerBalanceBefore: bigint;
-  let recipientBalanceBefore: bigint;
-  let lender1BalanceBefore: bigint;
-  let lender2BalanceBefore: bigint;
+  let refinanceAmount: bigint;
+
+  let balance: bigint;
+  let pastInterest: bigint;
+  let pastFee: bigint;
+  let currentInterest: bigint;
+  let currentFee: bigint;
+
+  let borrowerBalance_before: bigint;
+  let recipientBalance_before: bigint;
+  let lender1Balance_before: bigint;
+  let lender2Balance_before: bigint;
 
   beforeEach(async () => {
     terms = {
@@ -81,11 +92,11 @@ describe("Refinance", function () {
       totalAmount: principal,
       maxAmount: principal,
       minAmount: 0,
-      tenor: DAY_SECONDS * 365,
-      period: MONTH_SECONDS,
       rate: "1000",
-      fee: "200",
-      gracePeriod: MONTH_SECONDS
+      defaultRate: "2000",
+      period: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS,
+      installments: 12
     }
 
     collateral = {
@@ -95,24 +106,29 @@ describe("Refinance", function () {
       size: 1
     }
 
-    const offer = {
+    fee = {
+      recipient,
+      rate: "200"
+    }
+
+    const offer: LoanOfferStruct = {
       lender: lender,
-      recipient: recipient,
       terms,
       collateral,
+      fee,
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
 
     signature = await signLoanOffer(kettle, lender, offer);
 
-    const txn = await kettle.connect(borrower).borrow(offer, principal, 1, borrower, signature, []);
+    const txn = await kettle.connect(borrower).borrow(offer, principal, tokenId, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
 
-    borrowerBalanceBefore = await testErc20.balanceOf(borrower);
-    recipientBalanceBefore = await testErc20.balanceOf(recipient);
-    lender1BalanceBefore = await testErc20.balanceOf(lender);
-    lender2BalanceBefore = await testErc20.balanceOf(lender2);
+    borrowerBalance_before = await testErc20.balanceOf(borrower);
+    recipientBalance_before = await testErc20.balanceOf(recipient);
+    lender1Balance_before = await testErc20.balanceOf(lender);
+    lender2Balance_before = await testErc20.balanceOf(lender2);
   });
 
   for (const criteria of [0, 1]) {
@@ -141,7 +157,6 @@ describe("Refinance", function () {
 
             refinanceOffer = {
               lender: lender2,
-              recipient: recipient,
               terms: {
                 ...terms,
                 totalAmount: principal * 2n,
@@ -153,21 +168,28 @@ describe("Refinance", function () {
                 criteria,
                 identifier,
               },
+              fee,
               salt: randomBytes(),
               expiration: await time.latest() + DAY_SECONDS
             }
     
             signature = await signLoanOffer(kettle, lender2, refinanceOffer);
+
+            ({ balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien));
           });
 
-          it("amount > amountOwed", async () => {
-            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
-            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
+          afterEach(async () => {
+            let netPrincipalAmount = refinanceAmount - balance;
+            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalance_before + netPrincipalAmount);
+            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + currentFee + pastFee);
+            expect(await testErc20.balanceOf(lender)).to.equal(lender1Balance_before + principal + currentInterest + pastInterest);
+            expect(await testErc20.balanceOf(lender2)).to.equal(lender2Balance_before - refinanceAmount);
+          })
 
-            const refinanceAmount = principal * 2n;
+          it("amount > balance", async () => {
+            refinanceAmount = principal * 2n;
       
-            const txn = await kettle.connect(borrower).refinance(
+            txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
               lien,
@@ -175,23 +197,11 @@ describe("Refinance", function () {
               signature,
               proof
             );
-      
-            expect(await testErc20.balanceOf(borrower)).to.be.within(
-              borrowerBalanceBefore + refinanceAmount - principal - currentInterest - currentFee - pastInterest - pastFee - 1n, 
-              borrowerBalanceBefore + refinanceAmount - principal - currentInterest - currentFee - pastInterest - pastFee + 1n, 
-            );
-            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + currentFee + pastFee);
-            expect(await testErc20.balanceOf(lender)).to.equal(lender1BalanceBefore + principal + currentInterest + pastInterest);
-            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - refinanceAmount);
           })
       
-          it("amount > principal + interest", async () => {
-            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
-            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-
-            const refinanceAmount = principal + pastInterest + currentInterest + pastFee + (currentFee / 2n);
-            const txn = await kettle.connect(borrower).refinance(
+          it("balance > amount > principal + interest", async () => {
+            refinanceAmount = principal + pastInterest + currentInterest + pastFee + (currentFee / 2n);
+            txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
               lien,
@@ -199,24 +209,12 @@ describe("Refinance", function () {
               signature,
               proof
             );
-      
-            expect(await testErc20.balanceOf(borrower)).to.be.within(
-              borrowerBalanceBefore - (currentFee / 2n) - 1n, 
-              borrowerBalanceBefore - (currentFee / 2n) + 1n
-            );
-            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + currentFee + pastFee);
-            expect(await testErc20.balanceOf(lender)).to.equal(lender1BalanceBefore + principal + currentInterest + pastInterest);
-            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - refinanceAmount);
           });
       
           it("amount > principal", async () => {
-            const { principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien);
-            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-
-            const refinanceAmount = principal + pastInterest + (currentInterest / 2n);
+            refinanceAmount = principal + pastInterest + (currentInterest / 2n);
       
-            const txn = await kettle.connect(borrower).refinance(
+            txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
               lien,
@@ -224,24 +222,12 @@ describe("Refinance", function () {
               signature,
               proof
             );
-      
-            expect(await testErc20.balanceOf(borrower)).to.be.within(
-              borrowerBalanceBefore - pastFee - currentFee - (currentInterest / 2n) - 1n, 
-              borrowerBalanceBefore - pastFee - currentFee - (currentInterest / 2n) + 1n
-            );
-            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + currentFee + pastFee);
-            expect(await testErc20.balanceOf(lender)).to.equal(lender1BalanceBefore + principal + currentInterest + pastInterest);
-            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - refinanceAmount);
           });
       
           it("amount < principal", async () => {
-            const { principal, currentInterest, currentFee, pastInterest, pastFee } = await kettle.payments(lien);
-            expect(pastFee).to.equal(!delinquent ? 0n : currentFee);
-            expect(pastInterest).to.equal(!delinquent ? 0n : currentInterest);
-
-            const refinanceAmount = principal / 2n;
+            refinanceAmount = principal / 2n;
       
-            const txn = await kettle.connect(borrower).refinance(
+            txn = await kettle.connect(borrower).refinance(
               lienId,
               refinanceAmount,
               lien,
@@ -249,11 +235,6 @@ describe("Refinance", function () {
               signature,
               proof
             );
-      
-            expect(await testErc20.balanceOf(borrower)).to.equal(borrowerBalanceBefore - principal - currentFee - currentInterest - pastFee - pastInterest + refinanceAmount);
-            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalanceBefore + currentFee + pastFee);
-            expect(await testErc20.balanceOf(lender)).to.equal(lender1BalanceBefore + principal + currentInterest + pastInterest);
-            expect(await testErc20.balanceOf(lender2)).to.equal(lender2BalanceBefore - refinanceAmount);
           })
         });
       }
