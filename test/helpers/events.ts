@@ -226,6 +226,7 @@ export function extractSellInLienWithLoanLog(receipt: ContractTransactionReceipt
     tokenId: log.tokenId,
     size: log.size,
     amount: log.amount,
+    netAmount: log.netAmount,
     borrowAmount: log.borrowAmount,
     balance: log.balance,
     principal: log.principal,
