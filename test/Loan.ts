@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -31,6 +32,7 @@ describe("Loan", function () {
   let recipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -47,6 +49,7 @@ describe("Loan", function () {
     recipient = fixture.recipient;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokens = fixture.tokens;
     tokenId = fixture.tokenId;
@@ -110,6 +113,9 @@ describe("Loan", function () {
     
         const txn = await kettle.connect(borrower).borrow(loanOffer, principal, tokenId, borrower, signature, proof);
         ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+        expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
+        expect(await receipt.ownerOf(lienId)).to.equal(lender);
       })
     
       it("should make interest payment and be current until next payment", async () => {
@@ -279,7 +285,8 @@ describe("Loan", function () {
         )).to.be.revertedWithCustomError(kettle, "LienDefaulted");
     
         await kettle.claim(lienId, lien);
-    
+
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
         expect(await testErc721.ownerOf(tokenId)).to.equal(await lender.getAddress());
       });
     
@@ -317,6 +324,8 @@ describe("Loan", function () {
           currentInterest: paymentsResponse.currentInterest,
           currentFee: paymentsResponse.currentFee
         });
+
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
 
       it("should fail to make payment if last installment", async () => {
@@ -387,6 +396,8 @@ describe("Loan", function () {
           currentInterest: 0n,
           currentFee: 0n
         });
+
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
     });
   }

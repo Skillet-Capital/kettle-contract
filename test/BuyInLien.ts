@@ -10,7 +10,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -29,8 +30,8 @@ describe("Buy In Lien", function () {
   let recipient: Signer;
   let marketFeeRecipient: Signer;
 
-  let signers: Signer[];
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let testErc721: TestERC721;
   let testErc20: TestERC20;
@@ -67,9 +68,9 @@ describe("Buy In Lien", function () {
     buyer = fixture.offerMaker;
     recipient = fixture.recipient;
     marketFeeRecipient = fixture.marketFeeRecipient;
-    signers = fixture.signers;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     testErc721 = fixture.testErc721;
     testErc20 = fixture.testErc20;
@@ -117,6 +118,8 @@ describe("Buy In Lien", function () {
 
     const txn = await kettle.connect(borrower).borrow(loanOffer, principal, tokenId, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     const askOfferTerms = {
       currency: testErc20,
@@ -213,6 +216,8 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.currentFee).to.equal(currentFee);
         expect(buyInLienLog.pastInterest).to.equal(pastInterest);
         expect(buyInLienLog.pastFee).to.equal(pastFee);
+
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
   
       it("should purchase a listed asset in a lien (delinquent lien)", async () => {
@@ -262,7 +267,8 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.currentFee).to.equal(currentFee);
         expect(buyInLienLog.pastInterest).to.equal(pastInterest);
         expect(buyInLienLog.pastFee).to.equal(pastFee);
-    
+          
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
     });
   }

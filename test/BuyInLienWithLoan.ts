@@ -12,7 +12,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -34,6 +35,7 @@ describe("Buy In Lien With Loan", function () {
   let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -56,6 +58,7 @@ describe("Buy In Lien With Loan", function () {
     marketFeeRecipient = fixture.marketFeeRecipient;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     testErc721 = fixture.testErc721;
     testErc20 = fixture.testErc20;
@@ -124,8 +127,9 @@ describe("Buy In Lien With Loan", function () {
     const signature = await signLoanOffer(kettle, lender, offer);
 
     const txn = await kettle.connect(seller).borrow(offer, principal, 1, AddressZero, signature, []);
-      ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!))
-    );
+    ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     const askOfferTerms = {
       currency: testErc20,
@@ -247,11 +251,15 @@ describe("Buy In Lien With Loan", function () {
               expect(buyInLienWithLoanLog.oldLienId).to.equal(lienId);
               expect(borrowLog.lienId).to.equal(buyInLienWithLoanLog.newLienId);
               expect(borrowLog.lien.borrower).to.equal(buyInLienWithLoanLog.buyer).to.equal(buyer);
-              expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
               expect(borrowLog.lien.collection).to.equal(buyInLienWithLoanLog.collection);
               expect(borrowLog.lien.tokenId).to.equal(buyInLienWithLoanLog.tokenId);
               expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
               expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
+
+              await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
+              expect(await receipt.ownerOf(borrowLog.lienId))
+                .to.equal(loanOffer.lender)
+                .to.equal(lender2);
             }
           })
 
