@@ -889,38 +889,22 @@ contract Kettle is IKettle, OfferController {
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
 
         // transfer loan principal from lender and rest of amount from buyer to the contract
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), _borrowAmount);
-        Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
+        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), _borrowAmount);
+        Transfer.transferCurrency(lien.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
         // pay market fees (from this contract)
-        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+        uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < balance) {
             revert InsufficientAskAmount();
         }
 
-        Distributions.distributeLoanPayments(
-            lien.currency,
-            _borrowAmount,                  // distribute new principal from new lender to old lender
-            balance,
-            principal,
-            pastInterest,
-            pastFee,
-            currentInterest,
-            currentFee,
-            lien.lender,
-            lien.recipient,
-            loanOffer.lender,               // new lender pays primary amount
-            address(this),                  // this pays any remaining amount
-            lien.borrower                   // borrower receives net principal
-        );
-
-        // remaining amount owed by buyer is the diff between net amount and max of borrow or balance
-        // buyer already pays off lender if borrow amount is less than amount owed
-        // if borrow amount is greater than amount owed, then buyer pays rest
-        uint256 remainingAmountOwed = netAmount - Math.max(_borrowAmount, balance);
-        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, remainingAmountOwed);
+        // transfer net principal to seller and pay balance and fees
+        uint256 netPrincipal = netAmount - balance;
+        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
+        Transfer.transferCurrency(lien.currency, address(this), lien.lender, principal + currentInterest + pastInterest);
+        Transfer.transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
 
         delete liens[lienId];
 
