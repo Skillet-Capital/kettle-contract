@@ -210,16 +210,17 @@ contract Kettle is IKettle, OfferController {
 
     function loan(
         BorrowOffer calldata offer,
-        bytes32[] calldata proof
+        bytes calldata signature
     ) public returns (uint256 lienId) {
-        lienId = _loan(offer);
+        lienId = _loan(offer, signature);
 
         Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
         Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
 
     function _loan(
-        BorrowOffer calldata offer
+        BorrowOffer calldata offer,
+        bytes calldata signature
     ) internal returns (uint256 lienId) {
 
         Lien memory lien = Lien(
@@ -248,7 +249,7 @@ contract Kettle is IKettle, OfferController {
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
 
-        // _takeBorrowOffer(offer, lienId);
+        _takeBorrowOffer(lienId, offer, lien, signature);
 
         emit Borrow(
             lienId,

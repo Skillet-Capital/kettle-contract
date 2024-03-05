@@ -156,11 +156,12 @@ contract Signatures {
                 "BorrowOfferTerms terms,",
                 "FeeTerms fee,",
                 "uint256 expiration,",
-                "uint256 salt",
+                "uint256 salt,",
+                "uint256 nonce",
                 ")",
+                borrowOfferTermsTypestring,
                 collateralTypestring,
-                feeTermsTypestring,
-                borrowOfferTermsTypestring
+                feeTermsTypestring
             )
         );
 
@@ -308,7 +309,8 @@ contract Signatures {
                     _hashBorrowOfferTerms(offer.terms),
                     _hashFee(offer.fee),
                     offer.expiration,
-                    offer.salt
+                    offer.salt,
+                    nonces[offer.borrower]
                 )
             );
     }
