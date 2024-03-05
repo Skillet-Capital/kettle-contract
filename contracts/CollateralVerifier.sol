@@ -32,7 +32,7 @@ contract CollateralVerifier {
         uint256 identifier,
         uint256 tokenId,
         bytes32[] calldata proof
-    ) internal view {
+    ) internal pure {
         if (criteria == Criteria.PROOF) {
             if (
                 proof.length == 0 
