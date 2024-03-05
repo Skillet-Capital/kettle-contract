@@ -6,7 +6,7 @@ import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 import { Collateral, FeeTerms, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
 import { InvalidSignature, InvalidVParameter } from "./Errors.sol";
 
-import "hardhat/console.sol";
+
 
 contract Signatures {
     bytes32 private immutable _EIP_712_DOMAIN_TYPEHASH;
@@ -377,7 +377,7 @@ contract Signatures {
         uint8 v;
 
         if (signer.code.length > 0) {
-            console.log("HERE");
+            
             bytes4 magicValue = IERC1271(signer).isValidSignature(
                 hashToSign,
                 signature
