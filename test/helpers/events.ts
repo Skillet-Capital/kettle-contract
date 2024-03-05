@@ -126,6 +126,7 @@ export function extractBuyWithLoanLog(receipt: ContractTransactionReceipt) {
     tokenId: log.tokenId,
     size: log.size,
     amount: log.amount,
+    netAmount: log.netAmount,
     borrowAmount: log.borrowAmount
   }
 }

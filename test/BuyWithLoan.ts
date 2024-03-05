@@ -203,7 +203,8 @@ describe("Buy With Loan", function () {
         expect(borrowLog.lien.tokenId).to.equal(buyWithLoanLog.tokenId);
         expect(borrowLog.lien.principal).to.equal(buyWithLoanLog.borrowAmount);
         expect(buyWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
-    
+        expect(buyWithLoanLog.netAmount).to.equal(netAmount);
+
         expect(buyWithLoanLog.borrowAmount)
           .to.equal(borrowLog.lien.principal)
           .to.equal(borrowAmount > BigInt(askOffer.terms.amount) ? askOffer.terms.amount : borrowAmount);
