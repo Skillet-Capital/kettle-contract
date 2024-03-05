@@ -21,7 +21,6 @@ struct PaymentDeadline {
 }
 
 struct Lien {
-    address lender;
     address recipient;
     address borrower;
     address currency;
