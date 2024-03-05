@@ -8,8 +8,16 @@ enum LienStatus {
 }
 
 struct LienState {
-    uint256 paidThrough;
+    uint256 installment;
     uint256 principal;
+}
+
+struct PaymentDeadline {
+    uint256 periodStart;
+    uint256 deadline;
+    uint256 principal;
+    uint256 interest;
+    uint256 fee;
 }
 
 struct Lien {
@@ -22,10 +30,11 @@ struct Lien {
     uint256 size;
     uint256 principal;
     uint256 rate;
+    uint256 defaultRate;
     uint256 fee;
     uint256 period;
     uint256 gracePeriod;
-    uint256 tenor;
+    uint256 installments;
     uint256 startTime;
     LienState state;
 }
@@ -39,23 +48,28 @@ struct Collateral {
     uint256 size;
 }
 
+struct FeeTerms {
+    address recipient;
+    uint256 rate;
+}
+
 struct LoanOfferTerms {
     address currency;
     uint256 totalAmount;
     uint256 maxAmount;
     uint256 minAmount;
     uint256 rate;
-    uint256 fee;
+    uint256 defaultRate;
     uint256 period;
     uint256 gracePeriod;
-    uint256 tenor;
+    uint256 installments;
 }
 
 struct LoanOffer {
     address lender;
-    address recipient;
     Collateral collateral;
     LoanOfferTerms terms;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }
@@ -64,17 +78,17 @@ struct BorrowOfferTerms {
     address currency;
     uint256 amount;
     uint256 rate;
-    uint256 fee;
+    uint256 defaultRate;
     uint256 period;
     uint256 gracePeriod;
-    uint256 tenor;
+    uint256 installments;
 }
 
 struct BorrowOffer {
     address borrower;
-    address recipient;
     Collateral collateral;
     BorrowOfferTerms terms;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }
@@ -94,6 +108,7 @@ struct MarketOffer {
     address maker;
     Collateral collateral;
     MarketOfferTerms terms;
+    FeeTerms fee;
     uint256 expiration;
     uint256 salt;
 }

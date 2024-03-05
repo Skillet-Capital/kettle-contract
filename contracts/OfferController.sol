@@ -48,6 +48,23 @@ contract OfferController is IOfferController, Signatures {
         emit LoanOfferTaken(lienId, msg.sender, _offerHash);
     }
 
+    function _takeBorrowOffer(
+        uint256 lienId,
+        BorrowOffer calldata offer,
+        Lien memory lien,
+        bytes calldata signature
+    ) internal {
+        
+        bytes32 _offerHash = _hashBorrowOffer(offer);
+        _validateOffer(_offerHash, offer.borrower, offer.expiration, offer.salt, signature);
+
+
+        // mark offer as taken
+        cancelledOrFulfilled[offer.borrower][offer.salt] = 1;
+
+        emit BorrowOfferTaken(lienId, msg.sender, _offerHash);
+    }
+
     function _takeMarketOffer(
         MarketOffer calldata offer,
         bytes calldata signature

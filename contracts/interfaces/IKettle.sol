@@ -14,26 +14,29 @@ interface IKettle {
         uint256 size,
         uint256 principal,
         uint256 rate,
+        uint256 defaultRate,
         uint256 fee,
         uint256 period,
         uint256 gracePeriod,
-        uint256 tenor,
+        uint256 installments,
         uint256 startTime
     );
 
     event Payment(
         uint256 indexed lienId,
+        uint256 installment,
         uint256 principal,
         uint256 pastInterest,
         uint256 pastFee,
         uint256 currentInterest,
         uint256 currentFee,
         uint256 newPrincipal,
-        uint256 paidThrough
+        uint256 newInstallment
     );
 
     event Repay(
         uint256 indexed lienId,
+        uint256 installment,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,
@@ -66,7 +69,8 @@ interface IKettle {
         address collection,
         uint256 tokenId,
         uint256 size,
-        uint256 amount
+        uint256 amount,
+        uint256 netAmount
     );
 
     event BuyWithLoan(
@@ -78,6 +82,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount
     );
 
@@ -90,6 +95,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,
@@ -108,6 +114,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount,
         uint256 balance,
         uint256 principal,
@@ -126,6 +133,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount
     );
 
@@ -138,6 +146,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 balance,
         uint256 principal,
         uint256 pastInterest,
@@ -156,6 +165,7 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 amount,
+        uint256 netAmount,
         uint256 borrowAmount,
         uint256 balance,
         uint256 principal,

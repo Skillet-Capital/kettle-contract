@@ -3,14 +3,16 @@ pragma solidity ^0.8.19;
 
 import { IERC1271 } from "@openzeppelin/contracts/interfaces/IERC1271.sol";
 
-import { Collateral, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
+import { Collateral, FeeTerms, LoanOfferTerms, BorrowOfferTerms, MarketOfferTerms, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
 import { InvalidSignature, InvalidVParameter } from "./Errors.sol";
 
 import "hardhat/console.sol";
 
 contract Signatures {
     bytes32 private immutable _EIP_712_DOMAIN_TYPEHASH;
+    
     bytes32 private immutable _COLLATERAL_TYPEHASH;
+    bytes32 private immutable _FEE_TERMS_TYPEHASH;
 
     bytes32 private immutable _LOAN_OFFER_TERMS_TYPEHASH;
     bytes32 private immutable _LOAN_OFFER_TYPEHASH;
@@ -31,6 +33,7 @@ contract Signatures {
         (
             _EIP_712_DOMAIN_TYPEHASH,
             _COLLATERAL_TYPEHASH,
+            _FEE_TERMS_TYPEHASH,
             _LOAN_OFFER_TERMS_TYPEHASH,
             _LOAN_OFFER_TYPEHASH,
             _BORROW_OFFER_TERMS_TYPEHASH,
@@ -58,6 +61,7 @@ contract Signatures {
         returns (
             bytes32 eip712DomainTypehash,
             bytes32 collateralTypehash,
+            bytes32 feeTermsTypehash,
             bytes32 loanOfferTermsTypehash,
             bytes32 loanOfferTypehash,
             bytes32 borrowOfferTermsTypehash,
@@ -88,6 +92,15 @@ contract Signatures {
 
         collateralTypehash = keccak256(collateralTypestring);
 
+        bytes memory feeTermsTypestring = bytes.concat(
+            "FeeTerms(",
+            "address recipient,",
+            "uint256 rate",
+            ")"
+        );
+
+        feeTermsTypehash = keccak256(feeTermsTypestring);
+
         bytes memory loanOfferTermsTypestring = bytes.concat(
             "LoanOfferTerms(",
             "address currency,",
@@ -95,10 +108,10 @@ contract Signatures {
             "uint256 maxAmount,",
             "uint256 minAmount,",
             "uint256 rate,",
-            "uint256 fee,",
+            "uint256 defaultRate,",
             "uint256 period,",
             "uint256 gracePeriod,",
-            "uint256 tenor",
+            "uint256 installments",
             ")"
         );
 
@@ -108,42 +121,47 @@ contract Signatures {
             bytes.concat(
                 "LoanOffer(",
                 "address lender,",
-                "address recipient,",
                 "Collateral collateral,",
                 "LoanOfferTerms terms,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
                 "uint256 salt,",
                 "uint256 nonce",
                 ")",
                 collateralTypestring,
+                feeTermsTypestring,
                 loanOfferTermsTypestring
             )
         );
 
-        borrowOfferTermsTypehash = keccak256(
-            bytes.concat(
-                "BorrowOfferTerms(",
-                "address currency,",
-                "uint256 amount,",
-                "uint256 rate,",
-                "uint256 fee,",
-                "uint256 period,",
-                "uint256 gracePeriod,",
-                "uint256 tenor",
-                ")"
-            )
+        bytes memory borrowOfferTermsTypestring = bytes.concat(
+            "BorrowOfferTerms(",
+            "address currency,",
+            "uint256 amount,",
+            "uint256 rate,",
+            "uint256 defaultRate,",
+            "uint256 period,",
+            "uint256 gracePeriod,",
+            "uint256 installments",
+            ")"
         );
+
+        borrowOfferTermsTypehash = keccak256(borrowOfferTermsTypestring);
 
         borrowOfferTypehash = keccak256(
             bytes.concat(
                 "BorrowOffer(",
                 "address borrower,",
-                "address recipient,",
                 "Collateral collateral,",
                 "BorrowOfferTerms terms,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
-                "uint256 salt",
-                ")"
+                "uint256 salt,",
+                "uint256 nonce",
+                ")",
+                borrowOfferTermsTypestring,
+                collateralTypestring,
+                feeTermsTypestring
             )
         );
 
@@ -166,11 +184,13 @@ contract Signatures {
                 "address maker,",
                 "Collateral collateral,",
                 "MarketOfferTerms terms,",
+                "FeeTerms fee,",
                 "uint256 expiration,",
                 "uint256 salt,",
                 "uint256 nonce",
                 ")",
                 collateralTypestring,
+                feeTermsTypestring,
                 marketOfferTermsTypestring
             )
         );
@@ -208,6 +228,19 @@ contract Signatures {
             );
     }
 
+    function _hashFee(
+        FeeTerms calldata fee
+    ) internal view returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    _FEE_TERMS_TYPEHASH,
+                    fee.recipient,
+                    fee.rate
+                )
+            );
+    }
+
     function _hashLoanOfferTerms(
         LoanOfferTerms calldata terms
     ) internal view returns (bytes32) {
@@ -220,10 +253,10 @@ contract Signatures {
                     terms.maxAmount,
                     terms.minAmount,
                     terms.rate,
-                    terms.fee,
+                    terms.defaultRate,
                     terms.period,
                     terms.gracePeriod,
-                    terms.tenor
+                    terms.installments
                 )
             );
     }
@@ -236,9 +269,9 @@ contract Signatures {
                 abi.encode(
                     _LOAN_OFFER_TYPEHASH,
                     offer.lender,
-                    offer.recipient,
                     _hashCollateral(offer.collateral),
                     _hashLoanOfferTerms(offer.terms),
+                    _hashFee(offer.fee),
                     offer.expiration,
                     offer.salt,
                     nonces[offer.lender]
@@ -256,10 +289,10 @@ contract Signatures {
                     terms.currency,
                     terms.amount,
                     terms.rate,
-                    terms.fee,
+                    terms.defaultRate,
                     terms.period,
                     terms.gracePeriod,
-                    terms.tenor
+                    terms.installments
                 )
             );
     }
@@ -272,11 +305,12 @@ contract Signatures {
                 abi.encode(
                     _BORROW_OFFER_TYPEHASH,
                     offer.borrower,
-                    offer.recipient,
                     _hashCollateral(offer.collateral),
                     _hashBorrowOfferTerms(offer.terms),
+                    _hashFee(offer.fee),
                     offer.expiration,
-                    offer.salt
+                    offer.salt,
+                    nonces[offer.borrower]
                 )
             );
     }
@@ -308,6 +342,7 @@ contract Signatures {
                     offer.maker,
                     _hashCollateral(offer.collateral),
                     _hashMarketOfferTerms(offer.terms),
+                    _hashFee(offer.fee),
                     offer.expiration,
                     offer.salt,
                     nonces[offer.maker]

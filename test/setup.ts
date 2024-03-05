@@ -15,6 +15,7 @@ export interface Fixture {
   lender2: Signer,
   offerMaker: Signer,
   recipient: Signer,
+  marketFeeRecipient: Signer,
   signers: Signer[],
   kettle: Kettle,
   testErc20: TestERC20,
@@ -25,7 +26,7 @@ export interface Fixture {
 }
 
 export async function getFixture(): Promise<Fixture> {
-  const [owner, borrower, lender, lender2, recipient, offerMaker, ...signers] = await ethers.getSigners();
+  const [owner, borrower, lender, lender2, recipient, marketFeeRecipient, offerMaker, ...signers] = await ethers.getSigners();
 
   /* Deploy Helpers */
   const Distributions = await ethers.getContractFactory("Distributions");
@@ -83,6 +84,7 @@ export async function getFixture(): Promise<Fixture> {
     lender2,
     offerMaker,
     recipient,
+    marketFeeRecipient,
     signers,
     kettle,
     testErc20,

@@ -4,70 +4,23 @@ pragma solidity ^0.8.19;
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria } from "./Errors.sol";
+import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, Criteria, PaymentDeadline } from "./Structs.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
-import { FixedInterest } from "./models/FixedInterest.sol";
-import { Transfer } from "./Transfer.sol";
-import { Distributions } from "./Distributions.sol";
 import { OfferController } from "./OfferController.sol";
+import { StatusViewer } from "./StatusViewer.sol";
 
-contract Kettle is IKettle, OfferController {
+import { FixedInterest } from "./models/FixedInterest.sol";
+import { Distributions } from "./Distributions.sol";
+import { Transfer } from "./Transfer.sol";
+
+contract Kettle is IKettle, OfferController, StatusViewer {
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
     constructor() OfferController() public {}
-
-    function payments(Lien memory lien) public view returns (
-        uint256 balance,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
-    ) {
-        principal = lien.state.principal;
-        (
-            pastInterest, 
-            pastFee, 
-            currentInterest,
-            currentFee
-        ) = FixedInterest.computeInterestAndFees(
-            lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
-            lien.period,
-            lien.rate,
-            lien.fee,
-            principal
-        );
-        balance = principal + pastInterest + pastFee + currentInterest + currentFee;
-    }
-
-    function nextPaymentDate(Lien memory lien) public view returns (uint256 date) {
-        return FixedInterest.computeNextPaymentDate(
-            lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
-            lien.period,
-            lien.gracePeriod
-        );
-    }
-
-    function lienStatus(Lien memory lien) public view returns (uint8) {
-        return FixedInterest.computeLienStatus(
-            lien.startTime,
-            lien.state.paidThrough,
-            lien.tenor,
-            lien.period,
-            lien.gracePeriod,
-            uint8(LienStatus.DEFAULTED),
-            uint8(LienStatus.DELINQUENT),
-            uint8(LienStatus.CURRENT)
-        );
-    }
 
     /*//////////////////////////////////////////////////
                     BORROW FLOWS
@@ -101,7 +54,7 @@ contract Kettle is IKettle, OfferController {
 
         Lien memory lien = Lien(
             offer.lender,
-            offer.recipient,
+            offer.fee.recipient,
             borrower,
             offer.terms.currency,
             offer.collateral.collection,
@@ -109,13 +62,14 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             amount,
             offer.terms.rate,
-            offer.terms.fee,
+            offer.terms.defaultRate,
+            offer.fee.rate,
             offer.terms.period,
             offer.terms.gracePeriod,
-            offer.terms.tenor,
+            offer.terms.installments,
             block.timestamp,
             LienState({
-                paidThrough: block.timestamp,
+                installment: 0,
                 principal: amount
             })
         );
@@ -137,31 +91,33 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime
         );
     }
 
     function loan(
         BorrowOffer calldata offer,
-        bytes32[] calldata proof
+        bytes calldata signature
     ) public returns (uint256 lienId) {
-        lienId = _loan(offer);
+        lienId = _loan(offer, signature);
 
         Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
         Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
 
     function _loan(
-        BorrowOffer calldata offer
+        BorrowOffer calldata offer,
+        bytes calldata signature
     ) internal returns (uint256 lienId) {
 
         Lien memory lien = Lien(
             msg.sender,
-            offer.recipient,
+            offer.fee.recipient,
             offer.borrower,
             offer.terms.currency,
             offer.collateral.collection,
@@ -169,13 +125,14 @@ contract Kettle is IKettle, OfferController {
             offer.collateral.size,
             offer.terms.amount,
             offer.terms.rate,
-            offer.terms.fee,
+            offer.terms.defaultRate,
+            offer.fee.rate,
             offer.terms.period,
             offer.terms.gracePeriod,
-            offer.terms.tenor,
+            offer.terms.installments,
             block.timestamp,
             LienState({
-                paidThrough: block.timestamp,
+                installment: 0,
                 principal: offer.terms.amount
             })
         );
@@ -184,7 +141,7 @@ contract Kettle is IKettle, OfferController {
             liens[lienId = _nextLienId++] = keccak256(abi.encode(lien));
         }
 
-        // _takeBorrowOffer(offer, lienId);
+        _takeBorrowOffer(lienId, offer, lien, signature);
 
         emit Borrow(
             lienId,
@@ -197,10 +154,11 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime
         );
     }
@@ -269,6 +227,10 @@ contract Kettle is IKettle, OfferController {
         uint256 currentInterest,
         uint256 currentFee
     ) {
+        if ((lien.state.installment + 1) == lien.installments) {
+            revert RepayOnLastInstallment();
+        }
+
         (
             ,
             ,
@@ -298,16 +260,18 @@ contract Kettle is IKettle, OfferController {
             lien.size,
             lien.principal,
             lien.rate,
+            lien.defaultRate,
             lien.fee,
             lien.period,
             lien.gracePeriod,
-            lien.tenor,
+            lien.installments,
             lien.startTime,
             LienState({
-                paidThrough: FixedInterest.computePaidThrough(
-                    lien.state.paidThrough, 
+                installment: FixedInterest.computeNextInstallment(
+                    lien.startTime,
                     lien.period,
-                    cureOnly
+                    cureOnly, 
+                    lien.state.installment
                 ),
                 principal: updatedPrincipal
             })
@@ -316,14 +280,15 @@ contract Kettle is IKettle, OfferController {
         liens[lienId] = keccak256(abi.encode(newLien));
 
         emit Payment(
-            lienId, 
+            lienId,
+            lien.state.installment,
             principal,
             pastInterest,
             pastFee,
             cureOnly ? 0 : currentInterest,
             cureOnly ? 0 : currentFee,
             newLien.state.principal,
-            newLien.state.paidThrough
+            newLien.state.installment
         );
     }
 
@@ -433,7 +398,8 @@ contract Kettle is IKettle, OfferController {
         delete liens[lienId];
 
         emit Repay(
-            lienId, 
+            lienId,
+            lien.state.installment,
             balance,
             principal,
             pastInterest,
@@ -478,13 +444,17 @@ contract Kettle is IKettle, OfferController {
 
         _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
         _takeMarketOffer(offer, signature);
-
+        
         if (offer.side == Side.BID) {
             if (offer.terms.withLoan) {
                 revert BidRequiresLoan();
             }
+
+            // pay market fees (bidder pays fees)
+            uint256 netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
+
             Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, offer.terms.amount);
+            Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, netAmount);
             
             emit MarketOrder(
                 offer.maker,
@@ -493,12 +463,17 @@ contract Kettle is IKettle, OfferController {
                 offer.collateral.collection,
                 tokenId,
                 offer.collateral.size,
-                offer.terms.amount
+                offer.terms.amount,
+                netAmount
             );
 
         } else {
+
+            // pay market fees (buyer pays fees)
+            uint256 netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
+
             Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, offer.terms.amount);
+            Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, netAmount);
             
             emit MarketOrder(
                 msg.sender,
@@ -507,7 +482,8 @@ contract Kettle is IKettle, OfferController {
                 offer.collateral.collection,
                 tokenId,
                 offer.collateral.size,
-                offer.terms.amount
+                offer.terms.amount,
+                netAmount
             );
         }
     }
@@ -527,28 +503,25 @@ contract Kettle is IKettle, OfferController {
         bytes32[] calldata loanProof,
         bytes32[] calldata askProof
     ) public returns (uint256 lienId) {
-
-        if (askOffer.side != Side.ASK) {
-            revert OfferNotAsk();
-        }
+        if (askOffer.side != Side.ASK) revert OfferNotAsk();
 
         _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, tokenId, loanProof);
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, tokenId, askProof);
 
         _matchMarketOfferWithLoanOffer(askOffer, loanOffer);
-
-        // take market offer
         _takeMarketOffer(askOffer, askOfferSignature);
 
-        // start a lien
+        // start a lien (borrow min of requested amount and ask offer amount)
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
         lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender, loanOfferSignature);
 
-        // transfer principal to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
+        // transfer loan principal from lender and rest of amount from buyer to this contract
+        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), _borrowAmount);
+        Transfer.transferCurrency(askOffer.terms.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
-        // transfer rest from buyer to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
+        // pay fees (contract pays fees) and pay seller net amount
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+        Transfer.transferCurrency(loanOffer.terms.currency, address(this), askOffer.maker, netAmount);
 
         // lock collateral
         Transfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
@@ -562,6 +535,7 @@ contract Kettle is IKettle, OfferController {
             tokenId,
             askOffer.collateral.size,
             askOffer.terms.amount,
+            netAmount,
             _borrowAmount
         );
     }
@@ -580,14 +554,8 @@ contract Kettle is IKettle, OfferController {
         bytes32[] calldata loanProof,
         bytes32[] calldata bidProof
     ) public returns (uint256 lienId) {
-
-        if (bidOffer.side != Side.BID) {
-            revert OfferNotBid();
-        }
-
-        if (!bidOffer.terms.withLoan) {
-            revert BidNotWithLoan();
-        }
+        if (bidOffer.side != Side.BID) revert OfferNotBid();
+        if (!bidOffer.terms.withLoan) revert BidNotWithLoan();
 
         bytes32 _loanOfferHash = _hashLoanOffer(loanOffer);
         if (!(bidOffer.terms.loanOfferHash == _loanOfferHash)) {
@@ -598,24 +566,21 @@ contract Kettle is IKettle, OfferController {
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, tokenId, bidProof);
 
         _matchMarketOfferWithLoanOffer(bidOffer, loanOffer);
-
-        // take market offer
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
-        // start loan
+        // start loan (borrow amount specified in bid)
         lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker, loanOfferSignature);
 
-        // transfer borrow amount to this
+        // transfer loan principal from lender and rest of amount from bidder to this contract
         Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
-
-        // transfer rest of bid from buyer to this
         Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
-        // transfer all currency to seller
-        Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, bidOffer.terms.amount);
+        // pay fees (contract pays fees) and pay seller net amount
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
+        Transfer.transferCurrency(bidOffer.terms.currency, address(this), msg.sender, netAmount);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, bidOffer.collateral.size);
+        Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, loanOffer.collateral.size);
 
         emit SellWithLoan(
             lienId,
@@ -626,6 +591,7 @@ contract Kettle is IKettle, OfferController {
             tokenId,
             bidOffer.collateral.size,
             bidOffer.terms.amount,
+            netAmount,
             bidOffer.terms.borrowAmount
         );
     }
@@ -643,18 +609,11 @@ contract Kettle is IKettle, OfferController {
         bytes calldata askOfferSignature,
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        if (lien.borrower != askOffer.maker) {
-            revert MakerIsNotBorrower();
-        }
-
-        if (askOffer.side != Side.ASK) {
-            revert OfferNotAsk();
-        }
+        if (lien.borrower != askOffer.maker) revert MakerIsNotBorrower();
+        if (askOffer.side != Side.ASK) revert OfferNotAsk();
 
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, proof);
         _matchMarketOfferWithLien(askOffer, lien);
-
-        // take market offer
         _takeMarketOffer(askOffer, askOfferSignature);
 
         (
@@ -666,14 +625,17 @@ contract Kettle is IKettle, OfferController {
             uint256 currentFee
         ) = payments(lien);
 
-        // ask amount must be greater than amount owed
-        if (askOffer.terms.amount < balance) {
+        // pay market fees (buyer pays fees)
+        uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+
+        // net ask amount must be greater than amount owed
+        if (netAmount < balance) {
             revert InsufficientAskAmount();
         }
 
         Distributions.distributeLoanPayments(
             lien.currency, 
-            askOffer.terms.amount,      // distribute ask amount
+            netAmount,                  // distribute net ask amount
             balance, 
             principal,
             pastInterest, 
@@ -688,13 +650,7 @@ contract Kettle is IKettle, OfferController {
         );
 
         // transfer collateral from this to buyer
-        Transfer.transferToken(
-            lien.collection, 
-            address(this),
-            msg.sender, 
-            lien.tokenId, 
-            lien.size
-        );
+        Transfer.transferToken(lien.collection, address(this), msg.sender, lien.tokenId, lien.size);
 
         delete liens[lienId];
 
@@ -707,6 +663,7 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId,
             lien.size,
             askOffer.terms.amount,
+            netAmount,
             balance,
             principal,
             pastInterest,
@@ -729,18 +686,11 @@ contract Kettle is IKettle, OfferController {
         bytes calldata bidOfferSignature,
         bytes32[] calldata proof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) onlyBorrower(lien) {
-        if (bidOffer.side != Side.BID) {
-            revert OfferNotBid();
-        }
-
-        if (bidOffer.terms.withLoan) {
-            revert BidRequiresLoan();
-        }
+        if (bidOffer.side != Side.BID) revert OfferNotBid();
+        if (bidOffer.terms.withLoan) revert BidRequiresLoan();
 
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, proof);
         _matchMarketOfferWithLien(bidOffer, lien);
-
-        // take market offer
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
         (
@@ -751,10 +701,13 @@ contract Kettle is IKettle, OfferController {
             uint256 currentInterest, 
             uint256 currentFee
         ) = payments(lien);
+
+        // pay market fees (bidder pays fees)
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
         
         Distributions.distributeLoanPayments(
             lien.currency,
-            bidOffer.terms.amount,          // distribute bid amount
+            netAmount,                      // distribute net bid amount
             balance,
             principal,
             pastInterest,
@@ -763,7 +716,7 @@ contract Kettle is IKettle, OfferController {
             currentFee,
             lien.lender,
             lien.recipient,
-            bidOffer.maker,                 // buyer pays primary amount
+            bidOffer.maker,                 // bidder pays primary amount
             msg.sender,                     // seller pays residual amount
             msg.sender                      // seller receives net principal
         );
@@ -782,6 +735,7 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId, 
             lien.size, 
             bidOffer.terms.amount, 
+            netAmount,
             balance, 
             principal, 
             pastInterest, 
@@ -802,13 +756,8 @@ contract Kettle is IKettle, OfferController {
         bytes32[] calldata loanProof,
         bytes32[] calldata askProof
     ) public validateLien(lien, lienId) lienIsCurrent(lien) returns (uint256 newLienId) {
-        if (askOffer.maker != lien.borrower) {
-            revert MakerIsNotBorrower();
-        }
-
-        if (askOffer.side != Side.ASK) {
-            revert OfferNotAsk();
-        }
+        if (askOffer.maker != lien.borrower) revert MakerIsNotBorrower();
+        if (askOffer.side != Side.ASK) revert OfferNotAsk();
 
         _verifyCollateral(loanOffer.collateral.criteria, loanOffer.collateral.identifier, lien.tokenId, loanProof);
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, askProof);
@@ -816,7 +765,6 @@ contract Kettle is IKettle, OfferController {
         _matchMarketOfferWithLien(askOffer, lien);
         _matchLoanOfferWithLien(loanOffer, lien);
 
-        // take market offer
         _takeMarketOffer(askOffer, askOfferSignature);
 
         (
@@ -828,35 +776,27 @@ contract Kettle is IKettle, OfferController {
             uint256 currentFee
         ) = payments(lien);
 
-        if (askOffer.terms.amount < balance) {
-            revert InsufficientAskAmount();
-        }
-
         // start new loan
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
 
-        Distributions.distributeLoanPayments(
-            lien.currency,
-            _borrowAmount,                  // distribute new principal
-            balance,
-            principal,
-            pastInterest,
-            pastFee,
-            currentInterest,
-            currentFee,
-            lien.lender,
-            lien.recipient,
-            loanOffer.lender,               // new lender pays primary amount
-            msg.sender,                     // buyer pays any remaining amount
-            lien.borrower                   // borrower receives net principal
-        );
+        // transfer loan principal from lender and rest of amount from buyer to the contract
+        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), _borrowAmount);
+        Transfer.transferCurrency(lien.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
-        // remaining amount owed by buyer is the diff between ask and max of borrow or amount owed
-        // buyer already pays off lender if borrow amount is less than amount owed
-        // if borrow amount is greater than amount owed, then buyer pays rest
-        uint256 remainingAmountOwed = askOffer.terms.amount - Math.max(_borrowAmount, balance);
-        Transfer.transferCurrency(lien.currency, msg.sender, askOffer.maker, remainingAmountOwed);
+        // pay market fees (from this contract)
+        uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
+
+        // net amount payable to lien must be greater than balance
+        if (netAmount < balance) {
+            revert InsufficientAskAmount();
+        }
+
+        // transfer net principal to seller and pay balance and fees
+        uint256 netPrincipal = netAmount - balance;
+        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
+        Transfer.transferCurrency(lien.currency, address(this), lien.lender, principal + currentInterest + pastInterest);
+        Transfer.transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
 
         delete liens[lienId];
 
@@ -870,6 +810,7 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId,
             lien.size,
             askOffer.terms.amount,
+            netAmount,
             _borrowAmount,
             balance,
             principal,
@@ -904,17 +845,17 @@ contract Kettle is IKettle, OfferController {
         _matchMarketOfferWithLien(bidOffer, lien);
         _matchLoanOfferWithLien(loanOffer, lien);
 
-        // take market offer
         _takeMarketOffer(bidOffer, bidOfferSignature);
 
         // borrow from loan offer
-        newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
+        newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, bidOffer.maker, loanOfferSignature);
 
-        // transfer borrow amount to this
+        // transfer loan principal and rest of bid to this
         Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
-
-        // transfer rest of bid from buyer to this
         Transfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+
+        // pay market fees (from this contract)
+        uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         (
             uint256 balance,
@@ -927,7 +868,7 @@ contract Kettle is IKettle, OfferController {
 
         Distributions.distributeLoanPayments(
             lien.currency,
-            bidOffer.terms.amount,      // distribute bid amount
+            netAmount,                  // distribute net amount bid amount
             balance,
             principal,
             pastInterest,
@@ -953,6 +894,7 @@ contract Kettle is IKettle, OfferController {
             lien.tokenId, 
             lien.size, 
             bidOffer.terms.amount,
+            netAmount,
             bidOffer.terms.borrowAmount, 
             balance,
             principal, 
@@ -961,6 +903,34 @@ contract Kettle is IKettle, OfferController {
             currentInterest, 
             currentFee
         );
+    }
+
+    function _computeFeeAndNetAmount(
+        uint256 amount,
+        uint256 fee
+    ) internal returns (uint256 feeAmount, uint256 netAmount) {
+        uint256 feeAmount = amount * fee / 10_000;
+        if (feeAmount > amount) {
+            revert InvalidMarketOfferAmount();
+        }
+
+        netAmount = amount - feeAmount;
+    }
+
+    function _payMarketFees(
+        address currency,
+        address payer,
+        address recipient,
+        uint256 amount,
+        uint256 fee
+    ) internal returns (uint256 netAmount) {
+        uint256 feeAmount = amount * fee / 10_000;
+        if (feeAmount > amount) {
+            revert InvalidMarketOfferAmount();
+        }
+
+        Transfer.transferCurrency(currency, payer, recipient, feeAmount);
+        netAmount = amount - feeAmount;
     }
 
     /*//////////////////////////////////////////////////
@@ -1073,6 +1043,7 @@ contract Kettle is IKettle, OfferController {
     function _lienIsDefaulted(
         Lien calldata lien
     ) internal view returns (bool) {
-        return (lien.state.paidThrough + lien.period + lien.gracePeriod) < block.timestamp;
+        uint256 paidThrough = lien.startTime + (lien.state.installment * lien.period);
+        return (paidThrough + lien.period + lien.gracePeriod) < block.timestamp;
     }
 }

@@ -7,6 +7,8 @@ error LienIsCurrent();
 error Unauthorized();
 error OnlyBorrower();
 
+error InvalidMarketOfferAmount();
+
 error OfferExpired();
 error InvalidLoanAmount();
 error InsufficientOffer();
@@ -29,3 +31,5 @@ error SizeMismatch();
 
 error InvalidSignature();
 error InvalidVParameter();
+
+error RepayOnLastInstallment();
