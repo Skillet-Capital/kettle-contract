@@ -42,18 +42,21 @@ export async function getFixture(): Promise<Fixture> {
   const transfer = await ethers.deployContract("Transfer");
   await transfer.waitForDeployment();
 
-  /* Deploy Kettle */
-  // await upgrades.silenceWarnings();
-  // const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
-  // const kettle = await upgrades.deployProxy(Kettle, [], { 
-  //   initializer: 'initialize',
-  //   unsafeAllow: ['external-library-linking'],
-  // });
-
+  /* Deploy Lender Receipt */
   const receipt = await ethers.deployContract("LenderReceipt");
 
-  const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
-  await kettle.waitForDeployment();
+  /* Deploy Kettle */
+  // await upgrades.silenceWarnings();
+  const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
+  const kettle = await upgrades.deployProxy(Kettle, [receipt], { 
+    kind: 'uups',
+    initializer: 'initialize'
+  });
+
+  console.log(kettle);
+
+  // const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
+  // await kettle.waitForDeployment();
 
   /* Set kettle as a supplier of receipts */
   await receipt.setSupplier(kettle, 1)

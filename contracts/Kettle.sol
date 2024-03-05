@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { MerkleProof } from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 import { LoanOffer, BorrowOffer, Lien, LienState, LienStatus, MarketOffer, Side, PaymentDeadline } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, Unauthorized, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, CollectionMismatch, CurrencyMismatch, SizeMismatch, BidCannotBorrow, BidRequiresLoan, InvalidCriteria, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
@@ -24,14 +25,24 @@ import { ILenderReceipt } from "./LenderReceipt.sol";
  * @author diamondjim.eth
  * @notice Provides lending and marketplace functionality for ERC721 and ERC1155
  */
-contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher {
+contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher, UUPSUpgradeable, OwnableUpgradeable {
     ILenderReceipt public immutable lenderReceipt;
 
     uint256 private _nextLienId;
     mapping(uint256 => bytes32) public liens;
 
+    uint256[50] private _gap;
+
+    // required by the OZ UUPS module
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+
     constructor(address _lenderReceiptAddress) OfferController() public {
         lenderReceipt = ILenderReceipt(_lenderReceiptAddress);
+    }
+
+    function initialize() external initializer {
+        __UUPSUpgradeable_init();
+        __Ownable_init(msg.sender);
     }
 
     /*//////////////////////////////////////////////////
