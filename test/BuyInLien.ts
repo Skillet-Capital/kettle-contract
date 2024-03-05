@@ -53,7 +53,11 @@ describe("Buy In Lien", function () {
   let recipientBalance_before: bigint;
   let marketFeeRecipientBalance_before: bigint;
 
-  let marketFeeAmount: bigint;
+  let balance: bigint;
+  let pastInterest: bigint;
+  let pastFee: bigint;
+  let currentInterest: bigint;
+  let currentFee: bigint;
 
   beforeEach(async () => {
     const fixture = await getFixture();
@@ -139,7 +143,6 @@ describe("Buy In Lien", function () {
     }
 
     marketOfferSignature = await signMarketOffer(kettle, borrower, askOffer);
-    marketFeeAmount = BigInt(askOffer.terms.amount) * BigInt(askOffer.fee.rate) / 10000n;
 
     buyerBalance_before = await testErc20.balanceOf(buyer);
     borrowerBalance_before = await testErc20.balanceOf(borrower);
@@ -182,6 +185,7 @@ describe("Buy In Lien", function () {
         );
 
         const marketFeeAmount = BigInt(askOffer.terms.amount) * BigInt(askOffer.fee.rate) / 10000n;
+        const netAmount = BigInt(askOffer.terms.amount) - marketFeeAmount;
     
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
@@ -201,6 +205,7 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.tokenId).to.equal(lien.tokenId);
         expect(buyInLienLog.size).to.equal(lien.size);
         expect(buyInLienLog.amount).to.equal(askOffer.terms.amount);
+        expect(buyInLienLog.netAmount).to.equal(netAmount);
     
         expect(buyInLienLog.balance).to.equal(balance);
         expect(buyInLienLog.principal).to.equal(_principal);
@@ -227,6 +232,9 @@ describe("Buy In Lien", function () {
           marketOfferSignature,
           proof
         );
+
+        const marketFeeAmount = BigInt(askOffer.terms.amount) * BigInt(askOffer.fee.rate) / 10000n;
+        const netAmount = BigInt(askOffer.terms.amount) - marketFeeAmount;
     
         // after checks
         expect(await testErc721.ownerOf(tokenId)).to.equal(buyer);
@@ -246,6 +254,7 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.tokenId).to.equal(lien.tokenId);
         expect(buyInLienLog.size).to.equal(lien.size);
         expect(buyInLienLog.amount).to.equal(askOffer.terms.amount);
+        expect(buyInLienLog.netAmount).to.equal(netAmount);
     
         expect(buyInLienLog.balance).to.equal(balance);
         expect(buyInLienLog.principal).to.equal(_principal);

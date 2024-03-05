@@ -160,6 +160,7 @@ export function extractBuyInLienLog(receipt: ContractTransactionReceipt) {
     tokenId: log.tokenId,
     size: log.size,
     amount: log.amount,
+    netAmount: log.netAmount,
     balance: log.balance,
     principal: log.principal,
     pastInterest: log.pastInterest,
