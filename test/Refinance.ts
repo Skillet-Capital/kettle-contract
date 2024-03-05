@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -31,8 +32,8 @@ describe("Refinance", function () {
   let lender2: Signer;
   let recipient: Signer;
 
-  let signers: Signer[];
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -49,9 +50,9 @@ describe("Refinance", function () {
     lender = fixture.lender;
     lender2 = fixture.lender2;
     recipient = fixture.recipient;
-    signers = fixture.signers;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokens = fixture.tokens;
     tokenId = fixture.tokenId;
@@ -125,6 +126,8 @@ describe("Refinance", function () {
     const txn = await kettle.connect(borrower).borrow(offer, principal, tokenId, borrower, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
 
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
+
     borrowerBalance_before = await testErc20.balanceOf(borrower);
     recipientBalance_before = await testErc20.balanceOf(recipient);
     lender1Balance_before = await testErc20.balanceOf(lender);
@@ -184,6 +187,8 @@ describe("Refinance", function () {
             expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + currentFee + pastFee);
             expect(await testErc20.balanceOf(lender)).to.equal(lender1Balance_before + principal + currentInterest + pastInterest);
             expect(await testErc20.balanceOf(lender2)).to.equal(lender2Balance_before - refinanceAmount);
+
+            await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
           })
 
           it("amount > balance", async () => {

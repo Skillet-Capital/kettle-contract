@@ -256,6 +256,7 @@ describe("Buy In Lien With Loan", function () {
               expect(borrowLog.lien.principal).to.equal(buyInLienWithLoanLog.borrowAmount);
               expect(buyInLienWithLoanLog.seller).to.equal(askOffer.maker).to.equal(seller);
 
+              await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
               expect(await receipt.ownerOf(borrowLog.lienId))
                 .to.equal(loanOffer.lender)
                 .to.equal(lender2);

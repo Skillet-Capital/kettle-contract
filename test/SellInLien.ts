@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -35,6 +36,7 @@ describe("Sell In Lien", function () {
   let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -53,6 +55,7 @@ describe("Sell In Lien", function () {
     marketFeeRecipient = fixture.marketFeeRecipient;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokens = fixture.tokens;
     tokenId = fixture.tokenId;
@@ -125,6 +128,8 @@ describe("Sell In Lien", function () {
 
     const txn = await kettle.connect(seller).borrow(offer, principal, 1, seller, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     terms = {
       currency: testErc20,
@@ -224,6 +229,8 @@ describe("Sell In Lien", function () {
             expect(sellInLienLog.currentFee).to.equal(currentFee);
             expect(sellInLienLog.pastInterest).to.equal(delinquent ? pastInterest : 0);
             expect(sellInLienLog.pastFee).to.equal(delinquent ? pastFee : 0);
+
+            await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
           })
 
           it("bid amount > amountOwed", async () => {

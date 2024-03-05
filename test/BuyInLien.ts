@@ -216,6 +216,8 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.currentFee).to.equal(currentFee);
         expect(buyInLienLog.pastInterest).to.equal(pastInterest);
         expect(buyInLienLog.pastFee).to.equal(pastFee);
+
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
   
       it("should purchase a listed asset in a lien (delinquent lien)", async () => {
@@ -265,7 +267,8 @@ describe("Buy In Lien", function () {
         expect(buyInLienLog.currentFee).to.equal(currentFee);
         expect(buyInLienLog.pastInterest).to.equal(pastInterest);
         expect(buyInLienLog.pastFee).to.equal(pastFee);
-    
+          
+        await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
       });
     });
   }
