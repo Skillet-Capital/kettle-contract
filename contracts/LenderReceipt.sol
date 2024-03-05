@@ -46,7 +46,7 @@ contract LenderReceipt is ERC721 {
         return string.concat(base, Strings.toString(tokenId));
     } 
 
-    function _baseURI() internal view virtual override returns (string memory) {
+    function _baseURI() internal view virtual returns (string memory) {
         return _baseURIextended;
     }
 
