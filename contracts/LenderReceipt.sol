@@ -10,6 +10,11 @@ interface ILenderReceipt {
     function burn(uint256 tokenId) external;
 }
 
+/**
+ * @title Kettle Lender Receipt
+ * @author diamondjim.eth
+ * @notice Implements the Kettle Lender Receipt ERC721
+ */
 contract LenderReceipt is ERC721 {
     using Strings for uint256;
     string public _baseURIextended;
@@ -22,13 +27,9 @@ contract LenderReceipt is ERC721 {
         _roles[ADMIN_ROLE][msg.sender] = 1;
     }
 
-    function setRole(uint256 role, address account, uint256 value) public requiresRole(ADMIN_ROLE) {
-        _roles[role][account] = value;
-    }
-
-    function setSupplier(address supplier, uint256 value) public requiresRole(ADMIN_ROLE) {
-        _roles[LENDER_RECEIPT_SUPPLIER][supplier] = value;
-    }
+    /*//////////////////////////////////////////////////
+                ERC721 IMPLEMENTATION
+    //////////////////////////////////////////////////*/
 
     function setBaseURI(string memory baseURI) public requiresRole(ADMIN_ROLE) {
         _baseURIextended = baseURI;
@@ -60,6 +61,18 @@ contract LenderReceipt is ERC721 {
         uint256 tokenId
     ) external requiresRole(LENDER_RECEIPT_SUPPLIER) {
         _burn(tokenId);
+    }
+
+    /*//////////////////////////////////////////////////
+                    ACCESS CONTROL
+    //////////////////////////////////////////////////*/
+
+    function setRole(uint256 role, address account, uint256 value) public requiresRole(ADMIN_ROLE) {
+        _roles[role][account] = value;
+    }
+
+    function setSupplier(address supplier, uint256 value) public requiresRole(ADMIN_ROLE) {
+        _roles[LENDER_RECEIPT_SUPPLIER][supplier] = value;
     }
 
     modifier requiresRole(uint256 role) {
