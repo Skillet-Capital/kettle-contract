@@ -88,7 +88,6 @@ describe("LienStatus", function () {
         startTime = await time.latest().then((t) => BigInt(t));
     
         lien = {
-          lender,
           borrower,
           recipient,
           currency: testErc20,

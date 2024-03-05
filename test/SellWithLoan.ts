@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -33,6 +34,7 @@ describe("Sell With Loan", function () {
   let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let principal: bigint;
   let tokens: number[];
@@ -52,6 +54,7 @@ describe("Sell With Loan", function () {
     marketFeeRecipient = fixture.marketFeeRecipient;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     principal = fixture.principal;
     tokenId = fixture.tokenId;
@@ -194,7 +197,6 @@ describe("Sell With Loan", function () {
         expect(borrowLog.lien.borrower).to.equal(sellWithLoanLog.buyer).to.equal(bidOffer.maker).to.equal(buyer);
         
         expect(sellWithLoanLog.seller).to.equal(seller);
-        expect(borrowLog.lien.lender).to.equal(lender);
     
         expect(borrowLog.lien.currency).to.equal(sellWithLoanLog.currency).to.equal(loanOffer.terms.currency);
         expect(borrowLog.lien.collection).to.equal(sellWithLoanLog.collection).to.equal(loanOffer.collateral.collection);
@@ -203,6 +205,10 @@ describe("Sell With Loan", function () {
         expect(borrowLog.lien.principal).to.equal(sellWithLoanLog.borrowAmount).to.equal(bidOffer.terms.borrowAmount);
         expect(sellWithLoanLog.amount).to.equal(sellWithLoanLog.amount).to.equal(bidOffer.terms.amount).to.equal(principal);
         expect(sellWithLoanLog.netAmount).to.equal(netSellAmount);
+
+        expect(await receipt.ownerOf(borrowLog.lienId))
+          .to.equal(loanOffer.lender)
+          .to.equal(lender);
       })
 
       it("should sell an asset into a bid using a loan", async () => {    

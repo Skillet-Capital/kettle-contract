@@ -32,7 +32,6 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
   return {
     lienId: lien.lienId,
     lien: {
-      lender: lien.lender,
       borrower: lien.borrower,
       recipient: lien.recipient,
       currency: lien.currency,

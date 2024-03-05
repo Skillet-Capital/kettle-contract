@@ -5,7 +5,8 @@ import { MaxUint256 } from "@ethersproject/constants";
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 
 export interface Fixture {
@@ -18,6 +19,7 @@ export interface Fixture {
   marketFeeRecipient: Signer,
   signers: Signer[],
   kettle: Kettle,
+  receipt: LenderReceipt,
   testErc20: TestERC20,
   testErc721: TestERC721,
   tokens: number[],
@@ -48,8 +50,13 @@ export async function getFixture(): Promise<Fixture> {
   //   unsafeAllow: ['external-library-linking'],
   // });
 
-  const kettle = await ethers.deployContract("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
+  const receipt = await ethers.deployContract("LenderReceipt");
+
+  const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
   await kettle.waitForDeployment();
+
+  /* Set kettle as a supplier of receipts */
+  await receipt.setSupplier(kettle, 1)
 
   /* Deploy TestERC20 */
   const testErc20 = await ethers.deployContract("TestERC20");
@@ -87,6 +94,7 @@ export async function getFixture(): Promise<Fixture> {
     marketFeeRecipient,
     signers,
     kettle,
+    receipt,
     testErc20,
     testErc721,
     tokens: [tokenId, tokenId + 1, tokenId + 2, tokenId + 3, tokenId + 4, tokenId + 5],

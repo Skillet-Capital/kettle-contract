@@ -15,7 +15,8 @@ import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForTok
 import {
   TestERC20,
   TestERC721,
-  Kettle
+  Kettle,
+  LenderReceipt
 } from "../typechain-types";
 import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
 
@@ -35,6 +36,7 @@ describe("Sell In Lien With Loan", function () {
   let marketFeeRecipient: Signer;
 
   let kettle: Kettle;
+  let receipt: LenderReceipt;
 
   let tokens: number[];
   let tokenId: number;
@@ -54,6 +56,7 @@ describe("Sell In Lien With Loan", function () {
     marketFeeRecipient = fixture.marketFeeRecipient;
 
     kettle = fixture.kettle;
+    receipt = fixture.receipt;
 
     tokenId = fixture.tokenId;
     tokens = fixture.tokens;
@@ -132,6 +135,8 @@ describe("Sell In Lien With Loan", function () {
 
     const txn = await kettle.connect(seller).borrow(offer, principal, 1, seller, signature, []);
     ({ lienId, lien } = await txn.wait().then(receipt => extractBorrowLog(receipt!)));
+
+    expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
     loanOffer = {
       lender: lender2,
@@ -249,13 +254,16 @@ describe("Sell In Lien With Loan", function () {
             expect(sellInLienWithLoanLog.buyer).to.equal(borrowLog.lien.borrower).to.equal(buyer);
             expect(sellInLienWithLoanLog.seller).to.equal(lien.borrower).to.equal(seller);
             
-            expect(borrowLog.lien.lender).to.equal(loanOffer.lender).to.equal(lender2);
             expect(borrowLog.lien.collection).to.equal(sellInLienWithLoanLog.collection);
             expect(borrowLog.lien.tokenId).to.equal(sellInLienWithLoanLog.tokenId);
             
             expect(sellInLienWithLoanLog.amount).to.equal(bidOffer.terms.amount);
             expect(sellInLienWithLoanLog.netAmount).to.equal(netSellAmount);
             expect(sellInLienWithLoanLog.borrowAmount).to.equal(borrowLog.lien.principal).to.equal(bidOffer.terms.borrowAmount);
+
+            expect(await receipt.ownerOf(borrowLog.lienId))
+              .to.equal(loanOffer.lender)
+              .to.equal(lender2);
           })
 
           it("bid > balance", async () => {
