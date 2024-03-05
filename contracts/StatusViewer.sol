@@ -4,8 +4,28 @@ pragma solidity ^0.8.19;
 import { Lien, LienState, LienStatus, PaymentDeadline } from "./Structs.sol";
 import { FixedInterest } from "./models/FixedInterest.sol";
 
+/**
+ * @title Kettle Status Viewer
+ * @author diamondjim.eth
+ * @notice View the status of a lien
+ */
 contract StatusViewer {
 
+    /**
+     * @notice Computes the payment details for a given lien, including balance, principal, and various components of interest and fees.
+     *
+     * @param lien The Lien structure representing the loan details.
+     *
+     * @return balance The total amount owed on the loan
+     * @return principal The original principal amount of the loan,
+     * @return pastInterest The accumulated interest up to the current installment due to default (if any),
+     * @return pastFee The accumulated fee up to the current installment due to default (if any),
+     * @return currentInterest The interest amount for the current installment,
+     * @return currentFee The fee amount for the current installment
+     *
+     * @dev The function calculates the total amount owed on the loan by summing up the principal, past interest, past fee, current interest, and current fee.
+     * It utilizes the `computeInterestAndFees` function from the `FixedInterest` contract to calculate the interest and fee components based on the lien parameters.
+     */
     function payments(Lien memory lien) public view returns (
         uint256 balance,
         uint256 principal,
@@ -35,6 +55,19 @@ contract StatusViewer {
         balance = principal + pastInterest + pastFee + currentInterest + currentFee;
     }
 
+    /**
+     * @notice Retrieves the current status and payment deadlines for a given lien.
+     *
+     * @param lien The Lien structure representing the loan details.
+     *
+     * @return status The current status of the lien (LienStatus),
+     * @return balance The total amount owed on the loan,
+     * @return delinquent PaymentDeadline structure representing the delinquent payment details,
+     * @return current PaymentDeadline structure representing the current payment details
+     *
+     * @dev The function calculates the payment details for the lien using the `payments` function and determines the current status based on the timestamp and loan parameters.
+     * It provides information about the total amount owed (`balance`) and the payment deadlines for both delinquent and current payments.
+     */
     function lienStatus(Lien memory lien) 
         public 
         view 
