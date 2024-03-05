@@ -43,6 +43,21 @@ contract OfferMatcher {
         }
     }
 
+    /**
+     * @dev Internal function to match market offer details with lien details.
+     *
+     * @param marketOffer Market offer details to compare.
+     * @param lien Lien details to compare.
+     *
+     * Requirements:
+     * - The collateral collection in the market offer must match the collateral collection in the lien.
+     * - The currency in the market offer must match the currency in the lien.
+     * - The collateral size in the market offer must match the collateral size in the lien.
+     *
+     * @dev throws CollectionMismatch if the collateral collections do not match.
+     * @dev throws CurrencyMismatch if the currencies do not match.
+     * @dev throws SizeMismatch if the collateral sizes do not match.
+     */
     function _matchMarketOfferWithLien(
         MarketOffer calldata marketOffer,
         Lien calldata lien
@@ -60,6 +75,21 @@ contract OfferMatcher {
         }
     }
 
+    /**
+     * @dev Internal function to match loan offer details with lien details.
+     *
+     * @param loanOffer Loan offer details to compare.
+     * @param lien Lien details to compare.
+     *
+     * Requirements:
+     * - The collateral collection in the loan offer must match the collateral collection in the lien.
+     * - The currency in the loan offer must match the currency in the lien.
+     * - The collateral size in the loan offer must match the collateral size in the lien.
+     *
+     * @dev throws CollectionMismatch if the collateral collections do not match.
+     * @dev throws CurrencyMismatch if the currencies do not match.
+     * @dev throws SizeMismatch if the collateral sizes do not match.
+     */
     function _matchLoanOfferWithLien(
         LoanOffer calldata loanOffer,
         Lien calldata lien
