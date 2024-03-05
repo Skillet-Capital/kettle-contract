@@ -1,8 +1,13 @@
-// SPDX-License-Identifier: Skillet Group - LLC
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
+/**
+ * @title Kettle Loan Payment Distribution Library
+ * @author diamondjim.eth
+ * @notice Distributes payments from payers to payees based on predefined tranches
+ */
 library Distributions {
 
     struct DistributionTranche {
@@ -11,7 +16,28 @@ library Distributions {
     }
     
     /**
-     * @dev distribute payments to lenders and recipients
+     * @notice Distributes loan payments to lenders and recipients.
+     *
+     * @param currency The address of the currency in which payments are made.
+     * @param amount The total amount to distribute, which may include balance, principal, past interest, past fee, current interest, and current fee.
+     * @param balance The outstanding balance to be covered by the distribution.
+     * @param principal The principal amount to be distributed.
+     * @param pastInterest The accumulated past interest amount.
+     * @param pastFee The accumulated past fee amount.
+     * @param currentInterest The current interest amount.
+     * @param currentFee The current fee amount.
+     * @param lender The address of the lender.
+     * @param feeRecipient The address of the fee recipient.
+     * @param primaryPayer The primary payer responsible for covering the outstanding balance.
+     * @param residualPayer The payer responsible for covering the residual amount.
+     * @param residualRecipient The recipient of the residual amount.
+     *
+     * Requirements:
+     * - The provided amounts and addresses must align with the specified parameters.
+     *
+     * @dev The function distributes the provided amount among lenders and recipients based on predefined tranches. Tranches include principal, interest, and fee components.
+     * It takes into account the outstanding balance and ensures proper distribution to both the primary and residual payers.
+     * The function calculates and transfers the amounts accordingly, considering different scenarios based on the relationship between the total amount and the tranches.
      */
     function distributeLoanPayments(
         address currency,
