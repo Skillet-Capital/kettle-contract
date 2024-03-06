@@ -80,6 +80,7 @@ describe("Market Order", function () {
         collateral = {
           collection: testErc721,
           criteria,
+          itemType: 0,
           identifier,
           size: 1
         }

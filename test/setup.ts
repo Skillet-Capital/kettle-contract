@@ -38,10 +38,6 @@ export async function getFixture(): Promise<Fixture> {
   const fixedModel = await ethers.getContractFactory("FixedInterest");
   const fixedInterest = await fixedModel.deploy();
 
-  /* Deploy Collateral Verifier */
-  const transfer = await ethers.deployContract("Transfer");
-  await transfer.waitForDeployment();
-
   /* Deploy Receipt */
   const receipt = await ethers.deployContract("LenderReceipt");
 
@@ -53,7 +49,7 @@ export async function getFixture(): Promise<Fixture> {
   //   unsafeAllow: ['external-library-linking'],
   // });
 
-  const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
+  const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Distributions: distributions.target } });
   await kettle.waitForDeployment();
 
   /* Set kettle as a supplier of receipts */

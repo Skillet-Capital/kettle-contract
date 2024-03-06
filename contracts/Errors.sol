@@ -25,6 +25,7 @@ error BidCannotBorrow();
 error MakerIsNotBorrower();
 error InsufficientAskAmount();
 
+error ItemTypeMismatch();
 error CollectionMismatch();
 error CurrencyMismatch();
 error SizeMismatch();

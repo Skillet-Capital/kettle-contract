@@ -104,6 +104,7 @@ describe("Buy With Loan", function () {
 
     const collateral: CollateralStruct = {
       collection: testErc721,
+      itemType: 0,
       criteria: 0,
       identifier: tokenId,
       size: 1

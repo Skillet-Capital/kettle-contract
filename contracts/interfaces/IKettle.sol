@@ -10,6 +10,7 @@ interface IKettle {
         address recipient,
         address collection,
         address currency,
+        uint8 itemType,
         uint256 tokenId,
         uint256 size,
         uint256 principal,

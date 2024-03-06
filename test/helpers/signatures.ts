@@ -4,6 +4,7 @@ import { Kettle, LoanOfferStruct, MarketOfferStruct, BorrowOfferStruct } from ".
 const collateralTypes = [
   { name: "collection", type: "address" },
   { name: "criteria", type: "uint8" },
+  { name: "itemType", type: "uint8" },
   { name: "identifier", type: "uint256" },
   { name: "size", type: "uint256" }
 ];

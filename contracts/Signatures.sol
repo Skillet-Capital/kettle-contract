@@ -85,6 +85,7 @@ contract Signatures {
             "Collateral(",
             "address collection,",
             "uint8 criteria,",
+            "uint8 itemType,",
             "uint256 identifier,",
             "uint256 size",
             ")"
@@ -222,6 +223,7 @@ contract Signatures {
                     _COLLATERAL_TYPEHASH,
                     collateral.collection,
                     collateral.criteria,
+                    collateral.itemType,
                     collateral.identifier,
                     collateral.size
                 )

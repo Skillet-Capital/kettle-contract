@@ -13,10 +13,10 @@ import { OfferController } from "./OfferController.sol";
 import { StatusViewer } from "./StatusViewer.sol";
 import { CollateralVerifier } from "./CollateralVerifier.sol";
 import { OfferMatcher } from "./OfferMatcher.sol";
+import { Transfer } from "./Transfer.sol";
 
 import { FixedInterest } from "./models/FixedInterest.sol";
 import { Distributions } from "./lib/Distributions.sol";
-import { Transfer } from "./lib/Transfer.sol";
 
 import { ILenderReceipt } from "./LenderReceipt.sol";
 
@@ -25,7 +25,7 @@ import { ILenderReceipt } from "./LenderReceipt.sol";
  * @author diamondjim.eth
  * @notice Provides lending and marketplace functionality for ERC721 and ERC1155
  */
-contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher, ERC721Holder, ERC1155Holder {
+contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralVerifier, OfferMatcher, ERC721Holder, ERC1155Holder {
     ILenderReceipt public immutable LENDER_RECEIPT;
 
     uint256 private _nextLienId;
@@ -67,8 +67,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
 
         lienId = _borrow(offer, amount, tokenId, borrower, signature);
 
-        Transfer.transferToken(offer.collateral.collection, msg.sender, address(this), tokenId, offer.collateral.size);
-        Transfer.transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
+        transferToken(offer.collateral.itemType, offer.collateral.collection, msg.sender, address(this), tokenId, offer.collateral.size);
+        transferCurrency(offer.terms.currency, offer.lender, borrower, amount);
     }
 
     /**
@@ -93,6 +93,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             borrower,
             offer.terms.currency,
             offer.collateral.collection,
+            offer.collateral.itemType,
             tokenId,
             offer.collateral.size,
             amount,
@@ -125,6 +126,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             lien.recipient,
             lien.collection,
             lien.currency,
+            uint8(lien.itemType),
             lien.tokenId,
             lien.size,
             lien.principal,
@@ -150,8 +152,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public returns (uint256 lienId) {
         lienId = _loan(offer, signature);
 
-        Transfer.transferToken(offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
-        Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
+        transferToken(offer.collateral.itemType, offer.collateral.collection, offer.borrower, address(this), offer.collateral.identifier, offer.collateral.size);
+        transferCurrency(offer.terms.currency, msg.sender, offer.borrower, offer.terms.amount);
     }
     /**
      * @dev Internal function to handle the loan process and create a lien for the loaned funds.
@@ -169,6 +171,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             offer.borrower,
             offer.terms.currency,
             offer.collateral.collection,
+            offer.collateral.itemType,
             offer.collateral.identifier,
             offer.collateral.size,
             offer.terms.amount,
@@ -201,6 +204,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             lien.recipient,
             lien.collection,
             lien.currency,
+            uint8(lien.itemType),
             lien.tokenId,
             lien.size,
             lien.principal,
@@ -231,8 +235,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
        (uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, _principal, false);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest + principal);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest + principal);
+        transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     /**
@@ -246,8 +250,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, 0, false);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest);
+        transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
     /**
@@ -261,8 +265,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (, uint256 pastInterest, uint256 pastFee,,) = _payment(lien, lienId, 0, true);
 
-        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
+        transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest);
+        transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
     /**
@@ -313,6 +317,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             lien.borrower,
             lien.currency,
             lien.collection,
+            lien.itemType,
             lien.tokenId,
             lien.size,
             lien.principal,
@@ -430,9 +435,9 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
-        Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), principal + pastInterest + currentInterest);
-        Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
+        transferToken(lien.itemType, lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
+        transferCurrency(lien.currency, msg.sender, getLender(lienId), principal + pastInterest + currentInterest);
+        transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
 
         // burn the lender receipt for the lien
         LENDER_RECEIPT.burn(lienId);
@@ -469,7 +474,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         }
 
         address lender = getLender(lienId);
-        Transfer.transferToken(lien.collection, address(this), lender, lien.tokenId, lien.size);
+        transferToken(lien.itemType, lien.collection, address(this), lender, lien.tokenId, lien.size);
 
         // burn lender receipt
         LENDER_RECEIPT.burn(lienId);
@@ -506,15 +511,15 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             // pay market fees (bidder pays fees)
             netAmount = _payMarketFees(offer.terms.currency, offer.maker, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
-            Transfer.transferToken(offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, offer.maker, msg.sender, netAmount);
+            transferToken(offer.collateral.itemType, offer.collateral.collection, msg.sender, offer.maker, tokenId, offer.collateral.size);
+            transferCurrency(offer.terms.currency, offer.maker, msg.sender, netAmount);
 
         } else {
             // pay market fees (buyer pays fees)
             netAmount = _payMarketFees(offer.terms.currency, msg.sender, offer.fee.recipient, offer.terms.amount, offer.fee.rate);
 
-            Transfer.transferToken(offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
-            Transfer.transferCurrency(offer.terms.currency, msg.sender, offer.maker, netAmount);
+            transferToken(offer.collateral.itemType, offer.collateral.collection, offer.maker, msg.sender, tokenId, offer.collateral.size);
+            transferCurrency(offer.terms.currency, msg.sender, offer.maker, netAmount);
         }
 
         emit MarketOrder(
@@ -564,14 +569,14 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         lienId = _borrow(loanOffer, _borrowAmount, tokenId, msg.sender, loanOfferSignature);
 
         // transfer loan principal from lender and rest of amount from buyer to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
-        Transfer.transferCurrency(askOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
+        transferCurrency(loanOffer.terms.currency, loanOffer.lender, askOffer.maker, _borrowAmount);
+        transferCurrency(askOffer.terms.currency, msg.sender, askOffer.maker, askOffer.terms.amount - _borrowAmount);
 
         // retrieve fees from seller
         uint256 netAmount = _payMarketFees(askOffer.terms.currency, askOffer.maker, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
+        transferToken(loanOffer.collateral.itemType, loanOffer.collateral.collection, askOffer.maker, address(this), tokenId, loanOffer.collateral.size);
 
         emit BuyWithLoan(
             lienId,
@@ -626,14 +631,14 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker, loanOfferSignature);
 
         // transfer loan principal from lender and rest of amount from bidder to seller
-        Transfer.transferCurrency(loanOffer.terms.currency, loanOffer.lender, msg.sender, bidOffer.terms.borrowAmount);
-        Transfer.transferCurrency(bidOffer.terms.currency, bidOffer.maker, msg.sender, bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+        transferCurrency(loanOffer.terms.currency, loanOffer.lender, msg.sender, bidOffer.terms.borrowAmount);
+        transferCurrency(bidOffer.terms.currency, bidOffer.maker, msg.sender, bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // retrieve fees from seller
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, msg.sender, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // lock collateral
-        Transfer.transferToken(loanOffer.collateral.collection, msg.sender, address(this), tokenId, loanOffer.collateral.size);
+        transferToken(loanOffer.collateral.itemType, loanOffer.collateral.collection, msg.sender, address(this), tokenId, loanOffer.collateral.size);
 
         emit SellWithLoan(
             lienId,
@@ -699,7 +704,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         );
 
         // transfer collateral from this to buyer
-        Transfer.transferToken(lien.collection, address(this), msg.sender, lien.tokenId, lien.size);
+        transferToken(lien.itemType, lien.collection, address(this), msg.sender, lien.tokenId, lien.size);
 
         // burn the lender receipt for the lien
         LENDER_RECEIPT.burn(lienId);
@@ -769,7 +774,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         );
         
         // transfer collateral from this to buyer
-        Transfer.transferToken(lien.collection, address(this), bidOffer.maker, lien.tokenId, lien.size);
+        transferToken(lien.itemType, lien.collection, address(this), bidOffer.maker, lien.tokenId, lien.size);
 
         // burn the lender receipt for the lien
         LENDER_RECEIPT.burn(lienId);
@@ -834,8 +839,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         newLienId = _borrow(loanOffer, _borrowAmount, lien.tokenId, msg.sender, loanOfferSignature);
 
         // transfer loan principal from lender and rest of amount from buyer to the contract
-        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), _borrowAmount);
-        Transfer.transferCurrency(lien.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
+        transferCurrency(lien.currency, loanOffer.lender, address(this), _borrowAmount);
+        transferCurrency(lien.currency, msg.sender, address(this), askOffer.terms.amount - _borrowAmount);
 
         // pay market fees (from this contract)
         uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
@@ -850,9 +855,9 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
 
         // transfer net principal to seller and pay balance and fees
         uint256 netPrincipal = netAmount - balance;
-        Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
-        Transfer.transferCurrency(lien.currency, address(this), getLender(lienId), principal + currentInterest + pastInterest);
-        Transfer.transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
+        transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
+        transferCurrency(lien.currency, address(this), getLender(lienId), principal + currentInterest + pastInterest);
+        transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
 
         // burn the lender receipt
         LENDER_RECEIPT.burn(lienId);
@@ -921,8 +926,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, bidOffer.maker, loanOfferSignature);
 
         // transfer loan principal and rest of bid to this
-        Transfer.transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
-        Transfer.transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
+        transferCurrency(lien.currency, loanOffer.lender, address(this), bidOffer.terms.borrowAmount);
+        transferCurrency(lien.currency, bidOffer.maker, address(this), bidOffer.terms.amount - bidOffer.terms.borrowAmount);
 
         // pay market fees (from this contract)
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
@@ -992,7 +997,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             revert InvalidMarketOfferAmount();
         }
 
-        Transfer.transferCurrency(currency, payer, recipient, feeAmount);
+        transferCurrency(currency, payer, recipient, feeAmount);
         netAmount = amount - feeAmount;
     }
 
