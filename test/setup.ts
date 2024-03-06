@@ -42,15 +42,16 @@ export async function getFixture(): Promise<Fixture> {
   const transfer = await ethers.deployContract("Transfer");
   await transfer.waitForDeployment();
 
+  /* Deploy Receipt */
+  const receipt = await ethers.deployContract("LenderReceipt");
+
   /* Deploy Kettle */
   // await upgrades.silenceWarnings();
   // const Kettle = await ethers.getContractFactory("Kettle", { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
-  // const kettle = await upgrades.deployProxy(Kettle, [], { 
+  // const kettle = await upgrades.deployProxy(Kettle, [receipt], { 
   //   initializer: 'initialize',
   //   unsafeAllow: ['external-library-linking'],
   // });
-
-  const receipt = await ethers.deployContract("LenderReceipt");
 
   const kettle = await ethers.deployContract("Kettle", [receipt], { libraries: { FixedInterest: fixedInterest.target, Transfer: transfer.target, Distributions: distributions.target } });
   await kettle.waitForDeployment();
