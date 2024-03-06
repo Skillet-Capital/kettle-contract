@@ -308,7 +308,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         }
 
         // determine the actual principal to be paid, considering the requested amount and remaining principal
-        uint256 principal = Math.min(_principal, lien.state.principal);
+        principal = Math.min(_principal, lien.state.principal);
         uint256 updatedPrincipal = lien.state.principal - principal;
 
         // update lien state
