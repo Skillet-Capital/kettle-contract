@@ -2,6 +2,8 @@
 pragma solidity ^0.8.19;
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import { ERC1155Holder } from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
 import { LoanOffer, BorrowOffer, Lien, LienState, MarketOffer, Side } from "./Structs.sol";
 import { InvalidLien, LienDefaulted, LienIsCurrent, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, BidCannotBorrow, BidRequiresLoan, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
@@ -23,7 +25,7 @@ import { ILenderReceipt } from "./LenderReceipt.sol";
  * @author diamondjim.eth
  * @notice Provides lending and marketplace functionality for ERC721 and ERC1155
  */
-contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher {
+contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, OfferMatcher, ERC721Holder, ERC1155Holder {
     ILenderReceipt public immutable LENDER_RECEIPT;
 
     uint256 private _nextLienId;
@@ -31,6 +33,10 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
 
     constructor(address _lenderReceiptAddress) public OfferController() {
         LENDER_RECEIPT = ILenderReceipt(_lenderReceiptAddress);
+    }
+
+    function getLender(uint256 lienId) public returns (address) {
+        return LENDER_RECEIPT.ownerOf(lienId);
     }
 
     /*//////////////////////////////////////////////////
@@ -225,8 +231,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
        (uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, _principal, false);
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
-        Transfer.transferCurrency(lien.currency, msg.sender, lender, pastInterest + currentInterest + principal);
+        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest + principal);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
@@ -241,8 +246,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = _payment(lien, lienId, 0, false);
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
-        Transfer.transferCurrency(lien.currency, msg.sender, lender, pastInterest + currentInterest);
+        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest + currentInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
     }
 
@@ -257,8 +261,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (, uint256 pastInterest, uint256 pastFee,,) = _payment(lien, lienId, 0, true);
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
-        Transfer.transferCurrency(lien.currency, msg.sender, lender, pastInterest);
+        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), pastInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee);
     }
 
@@ -378,8 +381,6 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         // get payment details of the existing lien
         (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
         
-        address lender = LENDER_RECEIPT.ownerOf(oldLienId);
-
         // distribute loan payments from new lender to old lender and pay or transfer net funds from borrower
         Distributions.distributeLoanPayments(
             lien.currency,
@@ -390,7 +391,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             pastFee,
             currentInterest,
             currentFee,
-            lender,                 // original lender
+            getLender(oldLienId),   // original lender
             lien.recipient,         // original recipient
             offer.lender,           // primary payer
             msg.sender,             // pays any remaining amount
@@ -429,9 +430,8 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
         (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
         Transfer.transferToken(lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        Transfer.transferCurrency(lien.currency, msg.sender, lender, principal + pastInterest + currentInterest);
+        Transfer.transferCurrency(lien.currency, msg.sender, getLender(lienId), principal + pastInterest + currentInterest);
         Transfer.transferCurrency(lien.currency, msg.sender, lien.recipient, pastFee + currentFee);
 
         // burn the lender receipt for the lien
@@ -468,7 +468,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             revert LienIsCurrent();
         }
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
+        address lender = getLender(lienId);
         Transfer.transferToken(lien.collection, address(this), lender, lien.tokenId, lien.size);
 
         // burn lender receipt
@@ -682,7 +682,6 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             revert InsufficientAskAmount();
         }
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
         Distributions.distributeLoanPayments(
             lien.currency, 
             netAmount,                  // distribute net ask amount
@@ -692,7 +691,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             pastFee, 
             currentInterest, 
             currentFee, 
-            lender, 
+            getLender(lienId), 
             lien.recipient, 
             msg.sender,                 // buyer pays primary amount
             msg.sender,                 // buyer pays residual amount
@@ -753,7 +752,6 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         // retrieve payment details from the lien
         (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
         
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                      // distribute net bid amount
@@ -763,7 +761,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             pastFee,
             currentInterest,
             currentFee,
-            lender,
+            getLender(lienId),
             lien.recipient,
             bidOffer.maker,                 // bidder pays primary amount
             msg.sender,                     // seller pays residual amount
@@ -851,10 +849,9 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         }
 
         // transfer net principal to seller and pay balance and fees
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
         uint256 netPrincipal = netAmount - balance;
         Transfer.transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
-        Transfer.transferCurrency(lien.currency, address(this), lender, principal + currentInterest + pastInterest);
+        Transfer.transferCurrency(lien.currency, address(this), getLender(lienId), principal + currentInterest + pastInterest);
         Transfer.transferCurrency(lien.currency, address(this), lien.recipient, pastFee + currentFee);
 
         // burn the lender receipt
@@ -933,7 +930,6 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
         // retrieve payment details from the lien
         (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien);
 
-        address lender = LENDER_RECEIPT.ownerOf(lienId);
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                  // distribute net amount bid amount
@@ -943,7 +939,7 @@ contract Kettle is IKettle, OfferController, StatusViewer, CollateralVerifier, O
             pastFee,
             currentInterest,
             currentFee,
-            lender,
+            getLender(lienId),
             lien.recipient,
             address(this),              // this is the primary payer
             msg.sender,                 // seller pays residual amount
