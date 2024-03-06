@@ -102,6 +102,7 @@ describe("Refinance", function () {
 
     collateral = {
       collection: testErc721,
+      itemType: 0,
       criteria: 0,
       identifier: tokenId,
       size: 1

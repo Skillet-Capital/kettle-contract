@@ -92,6 +92,7 @@ describe("LienStatus", function () {
           recipient,
           currency: testErc20,
           collection: testErc721,
+          itemType: 0,
           tokenId: 1,
           size: 1,
           principal,

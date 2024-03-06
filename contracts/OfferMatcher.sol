@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 import { Lien, MarketOffer, LoanOffer } from "./Structs.sol";
-import { CollectionMismatch, CurrencyMismatch, SizeMismatch } from "./Errors.sol";
+import { ItemTypeMismatch, CollectionMismatch, CurrencyMismatch, SizeMismatch } from "./Errors.sol";
 
 /**
  * @title Kettle Offer Matching Policy
@@ -30,6 +30,10 @@ contract OfferMatcher {
         MarketOffer calldata marketOffer,
         LoanOffer calldata loanOffer
     ) internal pure {
+        if (marketOffer.collateral.itemType != loanOffer.collateral.itemType) {
+            revert ItemTypeMismatch();
+        }
+
         if (marketOffer.collateral.collection != loanOffer.collateral.collection) {
             revert CollectionMismatch();
         }
@@ -62,6 +66,10 @@ contract OfferMatcher {
         MarketOffer calldata marketOffer,
         Lien calldata lien
     ) internal pure {
+        if (marketOffer.collateral.itemType != lien.itemType) {
+            revert ItemTypeMismatch();
+        }
+
         if (marketOffer.collateral.collection != lien.collection) {
             revert CollectionMismatch();
         }
@@ -94,6 +102,10 @@ contract OfferMatcher {
         LoanOffer calldata loanOffer,
         Lien calldata lien
     ) internal pure {
+        if (loanOffer.collateral.itemType != lien.itemType) {
+            revert ItemTypeMismatch();
+        }
+
         if (loanOffer.collateral.collection != lien.collection) {
             revert CollectionMismatch();
         }

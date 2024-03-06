@@ -20,11 +20,14 @@ struct PaymentDeadline {
     uint256 fee;
 }
 
+enum ItemType { ERC721, ERC1155 }
+
 struct Lien {
     address recipient;
     address borrower;
     address currency;
     address collection;
+    ItemType itemType;
     uint256 tokenId;
     uint256 size;
     uint256 principal;
@@ -43,6 +46,7 @@ enum Criteria { SIMPLE, PROOF }
 struct Collateral {
     address collection;
     Criteria criteria;
+    ItemType itemType;
     uint256 identifier;
     uint256 size;
 }

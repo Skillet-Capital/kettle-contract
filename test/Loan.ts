@@ -96,6 +96,7 @@ describe("Loan", function () {
         const collateral: CollateralStruct = {
           collection: testErc721,
           criteria: criteria,
+          itemType: 0,
           identifier: identifier,
           size: 1
         }
@@ -120,7 +121,7 @@ describe("Loan", function () {
     
       it("should make interest payment and be current until next payment", async () => {
         await time.increase(1n);
-        
+
         const paymentsResponse = await kettle.payments(lien);
         const { status } = await kettle.lienStatus(lien);
         expect(status).to.equal(0);
