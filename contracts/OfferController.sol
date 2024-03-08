@@ -21,6 +21,10 @@ contract OfferController is IOfferController, Signatures {
 
     constructor() Signatures() {}
 
+    function amountTaken(bytes32 _hash) public returns (uint256) {
+        return _amountTaken[_hash];
+    }
+
     /**
      * @dev Internal function to process and validate the acceptance of a loan offer for a specific lien.
      *
