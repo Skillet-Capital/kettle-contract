@@ -21,7 +21,7 @@ contract OfferController is IOfferController, Signatures {
 
     constructor() Signatures() {}
 
-    function amountTaken(_hash) public returns (uint256) {
+    function amountTaken(bytes32 _hash) public returns (uint256) {
         return _amountTaken[_hash];
     }
 
