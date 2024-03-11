@@ -1,16 +1,11 @@
-import {
-  time,
-  loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { Signer, parseUnits } from "ethers";
+import { Signer } from "ethers";
 
 import { getFixture } from './setup';
-import { signBorrowOffer, signLoanOffer } from "./helpers/signatures";
-import { extractBorrowLog, extractPaymentLog, extractRepayLog } from './helpers/events';
-import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
+import { signBorrowOffer } from "./helpers/signatures";
+import { extractBorrowLog } from './helpers/events';
+import { randomBytes } from './helpers/merkle';
 
 import {
   TestERC20,
@@ -18,11 +13,16 @@ import {
   Kettle,
   LenderReceipt
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct, BorrowOfferTermsStruct } from "../typechain-types/contracts/Kettle";
+
+import { 
+  LienStruct, 
+  CollateralStruct, 
+  FeeTermsStruct, 
+  BorrowOfferTermsStruct 
+} from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
-const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
 describe("Borrow", function () {
 
@@ -62,9 +62,6 @@ describe("Borrow", function () {
   let lienId: string | number | bigint;
   let lien: LienStruct;
 
-  let proof: string[];
-  let identifier: bigint;
-
   let terms: BorrowOfferTermsStruct;
   let collateral: CollateralStruct;
   let fee: FeeTermsStruct;
@@ -80,9 +77,8 @@ describe("Borrow", function () {
       amount: principal,
       rate: "1000",
       defaultRate: "2000",
-      period: MONTH_SECONDS,
-      gracePeriod: MONTH_SECONDS,
-      installments: 12
+      duration: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS
     }
 
     collateral = {
@@ -120,10 +116,7 @@ describe("Borrow", function () {
     expect(lien.rate).to.equal(terms.rate);
     expect(lien.defaultRate).to.equal(terms.defaultRate);
     expect(lien.fee).to.equal(fee.rate);
-    expect(lien.period).to.equal(terms.period);
+    expect(lien.duration).to.equal(terms.duration);
     expect(lien.gracePeriod).to.equal(terms.gracePeriod);
-    expect(lien.installments).to.equal(terms.installments);
-    expect(lien.state.installment).to.equal(0);
-    expect(lien.state.principal).to.equal(principal);
   })
 });
