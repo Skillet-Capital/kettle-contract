@@ -55,6 +55,35 @@ contract StatusViewer {
         balance = principal + pastInterest + pastFee + currentInterest + currentFee;
     }
 
+    function repayment(Lien memory lien) public view returns (
+        uint256 balance,
+        uint256 principal,
+        uint256 pastInterest,
+        uint256 pastFee,
+        uint256 currentInterest,
+        uint256 currentFee
+    ) {
+        principal = lien.state.principal;
+
+        (
+            pastInterest, 
+            pastFee, 
+            currentInterest,
+            currentFee
+        ) = FixedInterest.computeRepayment(
+            lien.startTime,
+            lien.state.installment,
+            lien.period,
+            lien.installments,
+            lien.rate,
+            lien.defaultRate,
+            lien.fee,
+            principal
+        );
+
+        balance = principal + pastInterest + pastFee + currentInterest + currentFee;
+    }
+
     /**
      * @notice Retrieves the current status and payment deadlines for a given lien.
      *

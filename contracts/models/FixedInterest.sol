@@ -13,28 +13,6 @@ library FixedInterest {
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
-    /**
-     * @notice Computes the past and current interest and fees for a loan installment.
-     *
-     * @param startTime The timestamp when the loan installment plan started.
-     * @param installment The current installment number.
-     * @param period The duration of each installment period.
-     * @param installments The total number of installments in the loan plan.
-     * @param rate The interest rate applied to the loan.
-     * @param defaultRate The interest rate applied in case of default.
-     * @param fee The fee rate applied to the loan.
-     * @param principal The loan principal amount.
-     *
-     * @return pastInterest The accumulated interest up to the current installment due to default (if any),
-     * @return pastFee The accumulated fee up to the current installment due to default (if any),
-     * @return currentInterest The interest amount for the current installment,
-     * @return currentFee The fee amount for the current installment
-     *
-     * @dev The function calculates past and current interest and fees based on the provided loan parameters.
-     * If the loan is paid up to date, it returns zero for past and current interest and fees.
-     * If the loan is in default, it calculates past interest and fee amounts.
-     * If the loan is within the installment period, it calculates current interest and fee amounts.
-     */
     function computeInterestAndFees(
         uint256 startTime,
         uint256 installment,
@@ -57,21 +35,53 @@ library FixedInterest {
         uint256 paidThrough = startTime + (installment * period);
         uint256 tenor = period * installments;
 
-        // if the loan is paid up to date, return no interest
-        if (block.timestamp < paidThrough) return (0, 0, 0, 0);
-
         bool inDefault = (block.timestamp > paidThrough + period) ? true : false;
         bool pastTenor = (block.timestamp > startTime + tenor) ? true : false;
 
+        // charge default rate if past payment is past due
         if (inDefault) {
             pastInterest = computeCurrentDebt(principal, defaultRate, period) - principal;
             pastFee = computeCurrentDebt(principal, fee, period) - principal;
         }
 
+        // charge regular rate if loan is in normal state
         if (!pastTenor) {
             currentInterest = computeCurrentDebt(principal, rate, period) - principal;
             currentFee = computeCurrentDebt(principal, fee, period) - principal;
         }
+    }
+
+    function computeRepayment(
+        uint256 startTime,
+        uint256 installment,
+        uint256 period,
+        uint256 installments,
+        uint256 rate,
+        uint256 defaultRate,
+        uint256 fee,
+        uint256 principal
+    ) public view returns (
+        uint256 pastInterest,
+        uint256 pastFee,
+        uint256 currentInterest,
+        uint256 currentFee
+    ) {
+
+        uint256 paidThrough = startTime + (installment * period);
+        if (block.timestamp < paidThrough) {
+            pastInterest = 0;
+            pastFee = 0;
+            currentInterest = 0;
+            currentFee = 0;
+            return (pastInterest, pastFee, currentInterest, currentFee);
+        }
+
+        (
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee
+        ) = computeInterestAndFees(startTime, installment, period, installments, rate, defaultRate, fee, principal);
     }
 
     /**
@@ -112,8 +122,7 @@ library FixedInterest {
     ) external view returns (uint256) {
         uint256 paidThrough = startTime + (installment * period);
         if (block.timestamp > paidThrough + period) return cureOnly ? installment + 1 : installment + 2;
-        if (block.timestamp > paidThrough) return installment + 1;
-        return installment;
+        return installment + 1;
     }
 
     /// @dev Converts an integer bips value to a signed wad value.

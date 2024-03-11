@@ -145,13 +145,14 @@ describe("Loan", function () {
         });
       });
     
-      it("should make interest, attemp additional interest payment, and still be paid through same period", async () => {
+      it.only("should make interest payment, make an additional interest payment, and then repay without interest", async () => {
         await time.increase(HALF_MONTH_SECONDS);
         
         const paymentsResponse = await kettle.payments(lien);
         const { status } = await kettle.lienStatus(lien);
         expect(status).to.equal(0);
         
+        // make first interest payment
         let txn = await kettle.connect(borrower).interestPayment(
           lienId,
           lien
@@ -175,22 +176,49 @@ describe("Loan", function () {
           principal: paymentLog1.newPrincipal
         }
         
-        // attempt an additional payment in the same period
+        // make an additional payment in the same period
         txn = await kettle.connect(borrower).interestPayment(
           lienId, 
           lien
         );
+
         const paymentLog2 = await txn.wait().then(receipt => extractPaymentLog(receipt!));
         expect(paymentLog2).to.deep.equal({
           lienId,
           installment: 1n,
           pastInterest: 0n,
           pastFee: 0n,
-          currentInterest: 0n,
-          currentFee: 0n,
+          currentInterest: paymentsResponse.currentInterest,
+          currentFee: paymentsResponse.currentFee,
           principal: 0n,
           newPrincipal: lien.principal,
-          newInstallment: 1n
+          newInstallment: 2n
+        });
+
+        lien.state = {
+          installment: paymentLog2.newInstallment,
+          principal: paymentLog2.newPrincipal
+        }
+
+        // make a repayment without interest
+        const repayment = await kettle.repayment(lien);
+        
+        await testErc20.mint(borrower, repayment.balance);
+        txn = await kettle.connect(borrower).repay(
+          lienId, 
+          lien
+        );
+
+        const repayLog = await txn.wait().then(receipt => extractRepayLog(receipt!));
+        expect(repayLog).to.deep.equal({
+          lienId,
+          installment: 2,
+          balance: lien.principal,
+          principal: lien.principal,
+          pastInterest: 0n,
+          pastFee: 0n,
+          currentInterest: 0n,
+          currentFee: 0n
         });
       });
     
