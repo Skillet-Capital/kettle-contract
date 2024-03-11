@@ -14,48 +14,30 @@ interface IKettle {
         uint256 tokenId,
         uint256 size,
         uint256 principal,
+        uint256 fee,
         uint256 rate,
         uint256 defaultRate,
-        uint256 fee,
-        uint256 period,
+        uint256 duration,
         uint256 gracePeriod,
-        uint256 installments,
         uint256 startTime
-    );
-
-    event Payment(
-        uint256 indexed lienId,
-        uint256 installment,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee,
-        uint256 newPrincipal,
-        uint256 newInstallment
-    );
-
-    event Repay(
-        uint256 indexed lienId,
-        uint256 installment,
-        uint256 balance,
-        uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
     );
 
     event Refinance(
         uint256 indexed oldLienId,
         uint256 indexed newLienId,
         uint256 amount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
+        uint256 interest,
+        uint256 fee
+    );
+
+    event Repay(
+        uint256 indexed lienId,
+        uint256 debt,
+        uint256 principal,
+        uint256 interest,
+        uint256 fee
     );
 
     event Claim(
@@ -97,12 +79,10 @@ interface IKettle {
         uint256 size,
         uint256 amount,
         uint256 netAmount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
+        uint256 interest,
+        uint256 fee
     );
 
     event BuyInLienWithLoan(
@@ -117,12 +97,10 @@ interface IKettle {
         uint256 amount,
         uint256 netAmount,
         uint256 borrowAmount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
+        uint256 interest,
+        uint256 fee
     );
 
     event SellWithLoan(
@@ -150,10 +128,8 @@ interface IKettle {
         uint256 netAmount,
         uint256 balance,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
+        uint256 interest,
+        uint256 fee
     );
 
     event SellInLienWithLoan(
@@ -168,11 +144,9 @@ interface IKettle {
         uint256 amount,
         uint256 netAmount,
         uint256 borrowAmount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee
+        uint256 interest,
+        uint256 fee
     );
 }
