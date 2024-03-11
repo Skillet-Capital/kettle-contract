@@ -118,6 +118,45 @@ describe("LienStatus", function () {
         defaultInterestAmount = ((BigInt(lien.defaultRate) * BigInt(lien.principal)) / 10_000n) / denominator;
         feeAmount = (BigInt(lien.fee) * BigInt(lien.principal)) / 10_000n / denominator;
       });
+
+      it.only("early [time < paid through]", async () => {
+        lien = { ...lien, state: { ...lien.state, installment: 1 } }
+
+        const { status, balance, delinquent, current } = await kettle.lienStatus(lien)
+          .then(({ status, balance, delinquent, current }) => ({
+            status,
+            balance,
+            delinquent: parsePaymentDeadline(delinquent),
+            current: parsePaymentDeadline(current)
+        }));
+
+        const payments = await kettle.payments(lien);
+        const repayment = await kettle.repayment(lien);
+
+        expect(status).to.equal(0);
+        expect(balance)
+          .to.equal(payments.balance)
+          .to.equal(BigInt(lien.principal) + interestAmount + feeAmount);
+
+        expect(delinquent.periodStart).to.equal(0);
+        expect(delinquent.deadline).to.equal(0);
+        expect(delinquent.principal).to.equal(0);
+        expect(delinquent.interest).to.equal(0).to.equal(payments.pastInterest).to.equal(repayment.pastInterest);
+        expect(delinquent.fee).to.equal(0).to.equal(payments.pastFee).to.equal(repayment.pastFee);
+
+        expect(current.periodStart).to.equal(startTime + period);
+        expect(current.deadline).to.equal(startTime + period * 2n);
+        expect(current.principal).to.equal(0);
+        expect(current.interest).to.equal(interestAmount).to.equal(payments.currentInterest);
+        expect(current.fee).to.equal(feeAmount).to.equal(payments.currentFee);
+
+        expect(repayment.balance).to.equal(lien.principal);
+        expect(repayment.principal).to.equal(lien.principal);
+        expect(repayment.pastInterest).to.equal(0);
+        expect(repayment.pastFee).to.equal(0);
+        expect(repayment.currentInterest).to.equal(0);
+        expect(repayment.currentFee).to.equal(0);
+      })
     
       it("current [time < period]", async () => {
         const { status, balance, delinquent, current } = await kettle.lienStatus(lien)
@@ -129,22 +168,26 @@ describe("LienStatus", function () {
         }));
 
         const payments = await kettle.payments(lien);
-        expect(payments.principal).to.equal(principal);
+        const repayment = await kettle.repayment(lien);
+        expect(payments.principal).to.equal(repayment.principal).to.equal(principal);
     
         expect(status).to.equal(0);
-        expect(balance).to.equal(BigInt(lien.principal) + interestAmount + feeAmount).to.equal(payments.balance);
+        expect(balance)
+          .to.equal(payments.balance)
+          .to.equal(repayment.balance)
+          .to.equal(BigInt(lien.principal) + interestAmount + feeAmount);
     
         expect(delinquent.periodStart).to.equal(0);
         expect(delinquent.deadline).to.equal(0);
         expect(delinquent.principal).to.equal(0);
-        expect(delinquent.interest).to.equal(0).to.equal(payments.pastInterest);
-        expect(delinquent.fee).to.equal(0).to.equal(payments.pastFee);
+        expect(delinquent.interest).to.equal(0).to.equal(payments.pastInterest).to.equal(repayment.pastInterest);
+        expect(delinquent.fee).to.equal(0).to.equal(payments.pastFee).to.equal(repayment.pastFee);
     
         expect(current.periodStart).to.equal(startTime);
         expect(current.deadline).to.equal(startTime + period);
         expect(current.principal).to.equal(0);
-        expect(current.interest).to.equal(interestAmount).to.equal(payments.currentInterest);
-        expect(current.fee).to.equal(feeAmount).to.equal(payments.currentFee);
+        expect(current.interest).to.equal(interestAmount).to.equal(payments.currentInterest).to.equal(repayment.currentInterest);
+        expect(current.fee).to.equal(feeAmount).to.equal(payments.currentFee).to.equal(repayment.currentFee);
       });
     
       it("delinquent [period < time < period + gracePeriod]", async () => {
