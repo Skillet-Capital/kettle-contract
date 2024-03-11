@@ -63,12 +63,6 @@ describe("Buy In Lien", function () {
   let recipientBalance_before: bigint;
   let marketFeeRecipientBalance_before: bigint;
 
-  let balance: bigint;
-  let pastInterest: bigint;
-  let pastFee: bigint;
-  let currentInterest: bigint;
-  let currentFee: bigint;
-
   beforeEach(async () => {
     const fixture = await getFixture();
     owner = fixture.owner;
