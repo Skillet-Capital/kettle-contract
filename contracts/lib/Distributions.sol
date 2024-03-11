@@ -9,11 +9,6 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @notice Distributes payments from payers to payees based on predefined tranches
  */
 library Distributions {
-
-    struct DistributionTranche {
-        uint256 amount;
-        address recipient;
-    }
     
     /**
      * @notice Distributes loan payments to lenders and recipients.
@@ -21,9 +16,8 @@ library Distributions {
      * @param currency The address of the currency in which payments are made.
      * @param amount The total amount to distribute, which may include debt, principal, past interest, past fee, current interest, and current fee.
      * @param debt The outstanding debt to be covered by the distribution.
-     * @param principal The principal amount to be distributed.
-     * @param interest The accumulated interest amount
-     * @param fee The accumulated fee amount
+     * @param lenderDebt Total amount owed to lender
+     * @param feeDebt Total amount owed to fee recipient
      * @param lender The address of the lender.
      * @param feeRecipient The address of the fee recipient.
      * @param primaryPayer The primary payer responsible for covering the outstanding debt.
@@ -41,83 +35,51 @@ library Distributions {
         address currency,
         uint256 amount,
         uint256 debt,
-        uint256 principal,
-        uint256 interest,
-        uint256 fee,
+        uint256 lenderDebt,
+        uint256 feeDebt,
         address lender,
         address feeRecipient,
         address primaryPayer,
         address residualPayer,
         address residualRecipient
     ) external {
+        
         if (amount < debt) {
+            // +-------------------------------------------------+
+            // |                                      amount     |
+            // |----------------------------------|---↓----------|
+            // |        principal + interest      |   fee        |
+            // +-------------------------------------------------+
 
-            DistributionTranche[3] memory tranches = _createTranches(
-                principal, 
-                lender,
-                interest, 
-                lender, 
-                fee, 
-                feeRecipient
-            );
+            if (amount > lenderDebt) {
+                _transferCurrency(currency, primaryPayer, lender, lenderDebt);
 
-            // +-----------------------------------------------------------+
-            // |                                              amount       |
-            // |-------------------------|-----------------|----↓----------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
+                uint256 feePayoff = amount - lenderDebt;
+                uint256 residualFeePayoff = feeDebt - feePayoff;
 
-            if (amount > tranches[0].amount + tranches[1].amount) {
-                _transferCurrency(currency, primaryPayer, tranches[0].recipient, tranches[0].amount);
-                _transferCurrency(currency, primaryPayer, tranches[1].recipient, tranches[1].amount);
-
-                uint256 lenderTranchePayment = amount - (tranches[0].amount + tranches[1].amount);
-                uint256 residualTranchePayment = tranches[2].amount - lenderTranchePayment;
-
-                _transferCurrency(currency, primaryPayer, tranches[2].recipient, lenderTranchePayment);
-                _transferCurrency(currency, residualPayer, tranches[2].recipient, residualTranchePayment);
+                _transferCurrency(currency, primaryPayer, feeRecipient, feePayoff);
+                _transferCurrency(currency, residualPayer, feeRecipient, residualFeePayoff);
             }
 
-            // +-----------------------------------------------------------+
-            // |                             amount                        |
-            // |-------------------------|-----↓-----------|---------------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
-
-            else if (amount > tranches[0].amount) {
-                _transferCurrency(currency, primaryPayer, tranches[0].recipient, tranches[0].amount);
-
-                uint256 lenderTranchePayment = amount - tranches[0].amount;
-                uint256 residualTranchePayment = tranches[1].amount - lenderTranchePayment;
-
-                _transferCurrency(currency, primaryPayer, tranches[1].recipient, lenderTranchePayment);
-                _transferCurrency(currency, residualPayer, tranches[1].recipient, residualTranchePayment);
-
-                _transferCurrency(currency, residualPayer, tranches[2].recipient, tranches[2].amount);
-            }
-
-            // +-----------------------------------------------------------+
-            // |       amount                                              |
-            // |---------↓---------------|-----------------|---------------|
-            // |        tranches[0]      |   tranches[1]   |   tranches[2] |
-            // +-----------------------------------------------------------+
+            // +-------------------------------------------------+
+            // |        amount                    |              |
+            // |--------↓-------------------------|--------------|
+            // |        principal + interest      |   fee        |
+            // +-------------------------------------------------+
 
             else {
-                uint256 lenderTranchePayment = amount;
-                uint256 residualTranchePayment = tranches[0].amount - lenderTranchePayment;
+                _transferCurrency(currency, primaryPayer, lender, amount);
 
-                _transferCurrency(currency, primaryPayer, tranches[0].recipient, lenderTranchePayment);
-                _transferCurrency(currency, residualPayer, tranches[0].recipient, residualTranchePayment);
-
-                _transferCurrency(currency, residualPayer, tranches[1].recipient, tranches[1].amount);
-                _transferCurrency(currency, residualPayer, tranches[2].recipient, tranches[2].amount);
+                uint256 residualPayoff = lenderDebt - amount;
+                _transferCurrency(currency, residualPayer, lender, residualPayoff);
+                _transferCurrency(currency, residualPayer, feeRecipient, feeDebt);
             }
 
         } else {
             uint256 netPrincipalReceived = amount - debt;
             _transferCurrency(currency, primaryPayer, residualRecipient, netPrincipalReceived);
-            _transferCurrency(currency, primaryPayer, lender, interest + principal);
-            _transferCurrency(currency, primaryPayer, feeRecipient, fee);
+            _transferCurrency(currency, primaryPayer, lender, lenderDebt);
+            _transferCurrency(currency, primaryPayer, feeRecipient, feeDebt);
         }
     }
 
@@ -132,43 +94,5 @@ library Distributions {
 
         if (from == address(this)) IERC20(currency).transfer(to, amount);
         else IERC20(currency).transferFrom(from, to, amount);
-    }
-
-    function _createTranches(
-        uint256 principal,
-        address principalRecipient,
-        uint256 interest,
-        address interestRecipient,
-        uint256 fee,
-        address feeRecipient
-    ) internal pure returns (DistributionTranche[3] memory) {
-        DistributionTranche[3] memory tranches;
-
-        // Create an array of structs to store the amounts and recipients
-        DistributionTranche[3] memory amountsAndRecipients = [
-            DistributionTranche(principal, principalRecipient),
-            DistributionTranche(interest, interestRecipient),
-            DistributionTranche(fee, feeRecipient)
-        ];
-
-        // Sort the array in descending order based on amounts
-        sortAmounts(amountsAndRecipients);
-
-        // Assign values to tranches
-        for (uint256 i = 0; i < 3; i++) {
-            tranches[i] = amountsAndRecipients[i];
-        }
-
-        return tranches;
-    }
-
-    function sortAmounts(DistributionTranche[3] memory arr) internal pure {
-        for (uint256 i = 0; i < 3; i++) {
-            for (uint256 j = i + 1; j < 3; j++) {
-                if (arr[i].amount < arr[j].amount) {
-                    (arr[i], arr[j]) = (arr[j], arr[i]);
-                }
-            }
-        }
     }
 }

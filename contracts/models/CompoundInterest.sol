@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "solmate/src/utils/SignedWadMath.sol";
+import { wadExp, wadMul, wadDiv } from "solmate/src/utils/SignedWadMath.sol";
 
 library CompoundInterest {
     int256 private constant _YEAR_WAD = 365 days * 1e18;
