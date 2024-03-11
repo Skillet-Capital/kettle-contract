@@ -40,8 +40,8 @@ library CompoundInterest {
             debt = computeCurrentDebt(
                 debt, 
                 defaultRate, 
-                startTime, 
-                startTime + duration
+                startTime + duration, 
+                block.timestamp
             );
         } else {
             debt = computeCurrentDebt(
