@@ -21,9 +21,8 @@ const loanOfferTermsTypes = [
   { name: "minAmount", type: "uint256" },
   { name: "rate", type: "uint256" },
   { name: "defaultRate", type: "uint256" },
-  { name: "period", type: "uint256" },
-  { name: "gracePeriod", type: "uint256" },
-  { name: "installments", type: "uint256" }
+  { name: "duration", type: "uint256" },
+  { name: "gracePeriod", type: "uint256" }
 ];
 
 const borrowOfferTermsTypes = [
@@ -31,9 +30,8 @@ const borrowOfferTermsTypes = [
   { name: "amount", type: "uint256" },
   { name: "rate", type: "uint256" },
   { name: "defaultRate", type: "uint256" },
-  { name: "period", type: "uint256" },
-  { name: "gracePeriod", type: "uint256" },
-  { name: "installments", type: "uint256" }
+  { name: "duration", type: "uint256" },
+  { name: "gracePeriod", type: "uint256" }
 ];
 
 const marketOfferTermsTypes = [
