@@ -55,6 +55,22 @@ contract StatusViewer {
         balance = principal + pastInterest + pastFee + currentInterest + currentFee;
     }
 
+
+    /**
+     * @notice Computes the repayment details for a given lien, including balance, principal, and various components of interest and fees.
+     *
+     * @param lien The Lien structure representing the loan details.
+     *
+     * @return balance The total amount owed on the loan
+     * @return principal The original principal amount of the loan,
+     * @return pastInterest The accumulated interest up to the current installment due to default (if any),
+     * @return pastFee The accumulated fee up to the current installment due to default (if any),
+     * @return currentInterest The interest amount for the current installment,
+     * @return currentFee The fee amount for the current installment
+     *
+     * @dev The function calculates the total amount owed on the loan by summing up the principal, past interest, past fee, current interest, and current fee.
+     * It utilizes the `computeRepayment` function from the `FixedInterest` contract to calculate the interest and fee components based on the lien parameters.
+     */
     function repayment(Lien memory lien) public view returns (
         uint256 balance,
         uint256 principal,
