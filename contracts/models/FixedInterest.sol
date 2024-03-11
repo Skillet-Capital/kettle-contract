@@ -13,6 +13,27 @@ library FixedInterest {
     uint256 private constant _LIQUIDATION_THRESHOLD = 100_000;
     uint256 private constant _BASIS_POINTS = 10_000;
 
+    /**
+     * @notice Computes the past and current interest and fees for a loan installment.
+     *
+     * @param startTime The timestamp when the loan installment plan started.
+     * @param installment The current installment number.
+     * @param period The duration of each installment period.
+     * @param installments The total number of installments in the loan plan.
+     * @param rate The interest rate applied to the loan.
+     * @param defaultRate The interest rate applied in case of default.
+     * @param fee The fee rate applied to the loan.
+     * @param principal The loan principal amount.
+     *
+     * @return pastInterest The accumulated interest up to the current installment due to default (if any),
+     * @return pastFee The accumulated fee up to the current installment due to default (if any),
+     * @return currentInterest The interest amount for the current installment,
+     * @return currentFee The fee amount for the current installment
+     *
+     * @dev The function calculates past and current interest and fees based on the provided loan parameters.
+     * If the loan is in default, it calculates past interest and fee amounts.
+     * If the loan is within the installment period, it calculates current interest and fee amounts.
+     */
     function computeInterestAndFees(
         uint256 startTime,
         uint256 installment,
@@ -51,6 +72,28 @@ library FixedInterest {
         }
     }
 
+    /**
+     * @notice Computes the current amount owed to pay off the loan.
+     *
+     * @param startTime The timestamp when the loan installment plan started.
+     * @param installment The current installment number.
+     * @param period The duration of each installment period.
+     * @param installments The total number of installments in the loan plan.
+     * @param rate The interest rate applied to the loan.
+     * @param defaultRate The interest rate applied in case of default.
+     * @param fee The fee rate applied to the loan.
+     * @param principal The loan principal amount.
+     *
+     * @return pastInterest The accumulated interest up to the current installment due to default (if any),
+     * @return pastFee The accumulated fee up to the current installment due to default (if any),
+     * @return currentInterest The interest amount for the current installment,
+     * @return currentFee The fee amount for the current installment
+     *
+     * @dev The function calculates past and current interest and fees based on the provided loan parameters.
+     * If the loan is paid up to date, it returns zero for past and current interest and fees.
+     * If the loan is in default, it calculates past interest and fee amounts.
+     * If the loan is within the installment period, it calculates current interest and fee amounts.
+     */
     function computeRepayment(
         uint256 startTime,
         uint256 installment,
