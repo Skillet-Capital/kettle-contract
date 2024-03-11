@@ -82,7 +82,7 @@ describe("Loan", function () {
           identifier = BigInt(generateMerkleRootForCollection(tokens));
         }
 
-        const fee: FeeTermsStruct = {
+        const feeTerms: FeeTermsStruct = {
           recipient,
           rate: "200"
         }
@@ -110,7 +110,7 @@ describe("Loan", function () {
           lender: lender,
           terms,
           collateral,
-          fee,
+          fee: feeTerms,
           salt: randomBytes(),
           expiration: await time.latest() + DAY_SECONDS
         }
@@ -132,7 +132,7 @@ describe("Loan", function () {
         await time.increase(HALF_MONTH_SECONDS);
 
         // get current debt amount
-        const { debt, feeInterest, lenderInterest } = await kettle.currentDebtAmount(lien);
+        const { debt, fee, interest } = await kettle.currentDebtAmount(lien);
 
         // repay loan
         const txn = await kettle.connect(borrower).repay(lienId, lien);
@@ -143,8 +143,8 @@ describe("Loan", function () {
         expect(repayLog.principal).to.equal(lien.principal);
 
         expect(repayLog.debt).to.be.within(debt, debt + 100n);
-        expect(repayLog.fee).to.be.within(feeInterest, feeInterest + 100n);
-        expect(repayLog.interest).to.be.within(lenderInterest, lenderInterest + 100n);
+        expect(repayLog.fee).to.be.within(fee, fee + 100n);
+        expect(repayLog.interest).to.be.within(interest, interest + 100n);
 
         // check state
         expect(await testErc721.ownerOf(tokenId)).to.equal(borrower);
@@ -157,7 +157,7 @@ describe("Loan", function () {
         await time.increase(MONTH_SECONDS + HALF_MONTH_SECONDS);
         
         // get current debt amount
-        const { debt, feeInterest, lenderInterest } = await kettle.currentDebtAmount(lien);
+        const { debt, fee, interest } = await kettle.currentDebtAmount(lien);
 
         // repay loan late
         let txn = await kettle.connect(borrower).repay(lienId, lien);
@@ -168,8 +168,8 @@ describe("Loan", function () {
         expect(repayLog.principal).to.equal(lien.principal);
 
         expect(repayLog.debt).to.be.within(debt, debt + 100n);
-        expect(repayLog.fee).to.be.within(feeInterest, feeInterest + 100n);
-        expect(repayLog.interest).to.be.within(lenderInterest, lenderInterest + 100n);
+        expect(repayLog.fee).to.be.within(fee, fee + 100n);
+        expect(repayLog.interest).to.be.within(interest, interest + 100n);
 
         // check state
         expect(await testErc721.ownerOf(tokenId)).to.equal(borrower);
