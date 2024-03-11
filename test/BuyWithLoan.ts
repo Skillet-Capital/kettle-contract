@@ -14,7 +14,16 @@ import {
   Kettle,
   LenderReceipt
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
+
+import { 
+  LienStruct, 
+  LoanOfferStruct, 
+  LoanOfferTermsStruct, 
+  CollateralStruct, 
+  MarketOfferStruct, 
+  MarketOfferTermsStruct, 
+  FeeTermsStruct 
+} from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -64,9 +73,6 @@ describe("Buy With Loan", function () {
 
   let txn: ContractTransactionResponse;
 
-  let lienId: string | number | bigint;
-  let lien: LienStruct;
-
   let loanOffer: LoanOfferStruct;
   let askOffer: MarketOfferStruct;
 
@@ -92,9 +98,8 @@ describe("Buy With Loan", function () {
       minAmount: 0,
       rate: "1000",
       defaultRate: "200",
-      period: MONTH_SECONDS,
-      gracePeriod: MONTH_SECONDS,
-      installments: 12
+      duration: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS
     }
 
     const loanOfferFee: FeeTermsStruct = {
