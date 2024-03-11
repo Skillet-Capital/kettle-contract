@@ -38,7 +38,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         return LENDER_RECEIPT.ownerOf(lienId);
     }
 
-    function currentDebtAmount(Lien memory lien) public view returns (uint256 debt, uint256 feeInterest, uint256 lenderInterest) {
+    function currentDebtAmount(Lien memory lien) public view returns (uint256 debt, uint256 fee, uint256 interest) {
         return CompoundInterest.currentDebtAmount(
             lien.principal, 
             lien.startTime,
@@ -246,7 +246,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         newLienId = _borrow(offer, amount, lien.tokenId, msg.sender, signature);
 
         // get payment details of the existing lien
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
         
         // distribute loan payments from new lender to old lender and pay or transfer net funds from borrower
         Distributions.distributeLoanPayments(
@@ -254,8 +254,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             amount,                 // distribute new principal
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest,
+            interest,
+            fee,
             getLender(oldLienId),   // original lender
             lien.recipient,         // original recipient
             offer.lender,           // primary payer
@@ -273,8 +273,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             amount,
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest
+            interest,
+            fee
         );
     }
 
@@ -291,11 +291,11 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
 
         transferToken(lien.itemType, lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
-        transferCurrency(lien.currency, msg.sender, getLender(lienId), lien.principal + lenderInterest);
-        transferCurrency(lien.currency, msg.sender, lien.recipient, feeInterest);
+        transferCurrency(lien.currency, msg.sender, getLender(lienId), lien.principal + interest);
+        transferCurrency(lien.currency, msg.sender, lien.recipient, fee);
 
         // burn the lender receipt for the lien
         LENDER_RECEIPT.burn(lienId);
@@ -305,8 +305,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             lienId,
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest
+            interest,
+            fee
         );
     }
 
@@ -535,7 +535,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
 
         // net ask amount must be greater than amount owed
         if (netAmount < debt) {
@@ -547,8 +547,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             netAmount,                  // distribute net ask amount
             debt, 
             lien.principal,
-            lenderInterest, 
-            feeInterest,
+            interest, 
+            fee,
             getLender(lienId), 
             lien.recipient, 
             msg.sender,                 // buyer pays primary amount
@@ -575,8 +575,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             netAmount,
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest
+            interest,
+            fee
         );
     }
 
@@ -606,15 +606,15 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
         
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                      // distribute net bid amount
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest,
+            interest,
+            fee,
             getLender(lienId),
             lien.recipient,
             bidOffer.maker,                 // bidder pays primary amount
@@ -641,8 +641,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             netAmount,
             debt, 
             lien.principal, 
-            lenderInterest, 
-            feeInterest
+            interest, 
+            fee
         );
     }
 
@@ -693,7 +693,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < debt) {
@@ -703,8 +703,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         // transfer net principal to seller and pay balance and fees
         uint256 netPrincipal = netAmount - debt;
         transferCurrency(lien.currency, address(this), askOffer.maker, netPrincipal);
-        transferCurrency(lien.currency, address(this), getLender(lienId), lien.principal + lenderInterest);
-        transferCurrency(lien.currency, address(this), lien.recipient, feeInterest);
+        transferCurrency(lien.currency, address(this), getLender(lienId), lien.principal + interest);
+        transferCurrency(lien.currency, address(this), lien.recipient, fee);
 
         // burn the lender receipt
         LENDER_RECEIPT.burn(lienId);
@@ -724,8 +724,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             _borrowAmount,
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest
+            interest,
+            fee
         );
     }
 
@@ -778,15 +778,15 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 debt, uint256 feeInterest, uint256 lenderInterest) = currentDebtAmount(lien);
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
 
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                  // distribute net amount bid amount
             debt,
             lien.principal,
-            lenderInterest,
-            feeInterest,
+            interest,
+            fee,
             getLender(lienId),
             lien.recipient,
             address(this),              // this is the primary payer
@@ -812,8 +812,8 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             bidOffer.terms.borrowAmount, 
             debt,
             lien.principal, 
-            lenderInterest,
-            feeInterest
+            interest,
+            fee
         );
     }
 

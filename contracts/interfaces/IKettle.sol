@@ -126,7 +126,7 @@ interface IKettle {
         uint256 size,
         uint256 amount,
         uint256 netAmount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
         uint256 interest,
         uint256 fee
