@@ -1,22 +1,34 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const unlockTime = currentTimestampInSeconds + 60;
+  const [owner] = await ethers.getSigners();
+  console.log(await owner.provider.getBalance(owner));
 
-  const lockedAmount = ethers.parseEther("0.001");
+  /* Deploy Helpers */
+  const Distributions = await ethers.getContractFactory("Distributions");
+  const distributions = await Distributions.deploy();
 
-  const lock = await ethers.deployContract("Lock", [unlockTime], {
-    value: lockedAmount,
+  /* Deploy Models */
+  const fixedModel = await ethers.getContractFactory("FixedInterest");
+  const fixedInterest = await fixedModel.deploy();
+
+  /* Deploy Receipt */
+  const receipt = await ethers.deployContract("LenderReceipt");
+  
+  const kettle = await ethers.deployContract(
+    "Kettle", 
+    [receipt], { libraries: { FixedInterest: fixedInterest.target, Distributions: distributions.target } });
+  await kettle.waitForDeployment();
+
+  /* Set kettle as a supplier of receipts */
+  await receipt.setSupplier(kettle, 1);
+
+  console.log({
+    distributions: await distributions.getAddress(),
+    fixedInterest: await fixedInterest.getAddress(),
+    receipt: await receipt.getAddress(),
+    kettle: await kettle.getAddress(),
   });
-
-  await lock.waitForDeployment();
-
-  console.log(
-    `Lock with ${ethers.formatEther(
-      lockedAmount
-    )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.target}`
-  );
 }
 
 // We recommend this pattern to be able to use async/await everywhere
