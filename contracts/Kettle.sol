@@ -299,7 +299,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         }
 
         // calculate accrued interest and fees from previous and current installments
-        (,, pastInterest, pastFee, currentInterest, currentFee) = payments(lien);
+        (,, pastInterest, pastFee, currentInterest, currentFee) = payments(lien, false);
 
         // calculate minimum interest amount to be paid
         uint256 minimumPayment = pastInterest + pastFee;
@@ -384,7 +384,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         newLienId = _borrow(offer, amount, lien.tokenId, msg.sender, signature);
 
         // get payment details of the existing lien
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
         
         // distribute loan payments from new lender to old lender and pay or transfer net funds from borrower
         Distributions.distributeLoanPayments(
@@ -433,7 +433,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         uint256 lienId,
         Lien calldata lien
     ) public validateLien(lien, lienId) lienIsCurrent(lien) {
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
 
         transferToken(lien.itemType, lien.collection, address(this), lien.borrower, lien.tokenId, lien.size);
         transferCurrency(lien.currency, msg.sender, getLender(lienId), principal + pastInterest + currentInterest);
@@ -680,7 +680,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
 
         // net ask amount must be greater than amount owed
         if (netAmount < balance) {
@@ -755,7 +755,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
         
         Distributions.distributeLoanPayments(
             lien.currency,
@@ -846,7 +846,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         uint256 netAmount = _payMarketFees(lien.currency, address(this), askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
 
         // net amount payable to lien must be greater than balance
         if (netAmount < balance) {
@@ -933,7 +933,7 @@ contract Kettle is IKettle, Transfer, OfferController, StatusViewer, CollateralV
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, address(this), bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
 
         // retrieve payment details from the lien
-        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = repayment(lien);
+        (uint256 balance, uint256 principal, uint256 pastInterest, uint256 pastFee, uint256 currentInterest, uint256 currentFee) = payments(lien, true);
 
         Distributions.distributeLoanPayments(
             lien.currency,
