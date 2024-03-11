@@ -13,7 +13,16 @@ import {
   Kettle,
   LenderReceipt
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
+
+import { 
+  LienStruct, 
+  LoanOfferStruct, 
+  LoanOfferTermsStruct, 
+  CollateralStruct, 
+  MarketOfferStruct, 
+  MarketOfferTermsStruct, 
+  FeeTermsStruct 
+} from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -121,16 +130,15 @@ describe("Buy In Lien", function () {
 
     expect(await receipt.ownerOf(lienId)).to.equal(lender);
 
-    const askOfferTerms = {
+    const askOfferTerms: MarketOfferTermsStruct = {
       currency: testErc20,
       amount: principal * 3n / 2n,
-      fee: 200,
       withLoan: false,
       borrowAmount: 0,
       loanOfferHash: BYTES_ZERO
     }
 
-    const askOfferFee = {
+    const askOfferFee: FeeTermsStruct = {
       recipient: marketFeeRecipient,
       rate: 200
     }
