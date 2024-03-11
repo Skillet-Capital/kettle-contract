@@ -1,11 +1,6 @@
-import {
-  time,
-  loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { ContractTransactionResponse, Signer, parseUnits } from "ethers";
+import { ContractTransactionResponse, Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
@@ -18,11 +13,19 @@ import {
   Kettle,
   LenderReceipt
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
+
+import { 
+  LienStruct, 
+  LoanOfferStruct, 
+  LoanOfferTermsStruct, 
+  CollateralStruct, 
+  MarketOfferStruct, 
+  MarketOfferTermsStruct, 
+  FeeTermsStruct 
+} from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
-const HALF_MONTH_SECONDS = MONTH_SECONDS / 2;
 
 describe("Sell With Loan", function () {
 
@@ -90,9 +93,8 @@ describe("Sell With Loan", function () {
       minAmount: 0,
       rate: "1000",
       defaultRate: "200",
-      period: MONTH_SECONDS,
-      gracePeriod: MONTH_SECONDS,
-      installments: 12
+      duration: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS
     }
 
     const loanOfferFee: FeeTermsStruct = {

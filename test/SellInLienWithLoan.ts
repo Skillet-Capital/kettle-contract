@@ -1,16 +1,11 @@
-import {
-  time,
-  loadFixture,
-} from "@nomicfoundation/hardhat-toolbox/network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+import { time } from "@nomicfoundation/hardhat-toolbox/network-helpers";
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { ContractTransactionResponse, Signer, parseUnits } from "ethers";
+import { ContractTransactionResponse, Signer } from "ethers";
 
 import { getFixture } from './setup';
 import { signLoanOffer, signMarketOffer } from "./helpers/signatures";
-import { extractBorrowLog, extractBuyInLienWithLoanLog, extractSellInLienWithLoanLog } from './helpers/events';
-import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken, hashIdentifier } from './helpers/merkle';
+import { extractBorrowLog, extractSellInLienWithLoanLog } from './helpers/events';
+import { randomBytes, generateMerkleRootForCollection, generateMerkleProofForToken } from './helpers/merkle';
 
 import {
   TestERC20,
@@ -18,7 +13,16 @@ import {
   Kettle,
   LenderReceipt
 } from "../typechain-types";
-import { LienStruct, LoanOfferStruct, LoanOfferTermsStruct, CollateralStruct, MarketOfferStruct, MarketOfferTermsStruct, FeeTermsStruct } from "../typechain-types/contracts/Kettle";
+
+import { 
+  LienStruct, 
+  LoanOfferStruct, 
+  LoanOfferTermsStruct, 
+  CollateralStruct, 
+  MarketOfferStruct, 
+  MarketOfferTermsStruct, 
+  FeeTermsStruct 
+} from "../typechain-types/contracts/Kettle";
 
 const DAY_SECONDS = 86400;
 const MONTH_SECONDS = DAY_SECONDS * 365 / 12;
@@ -82,11 +86,9 @@ describe("Sell In Lien With Loan", function () {
 
   let marketFeeAmount: bigint;
 
-  let balance: bigint;
-  let pastInterest: bigint;
-  let pastFee: bigint;
-  let currentInterest: bigint;
-  let currentFee: bigint;
+  let debt: bigint;
+  let interest: bigint;
+  let fee: bigint;
 
   let sellerBalance_before: bigint;
   let buyerBalance_before: bigint;
@@ -105,9 +107,8 @@ describe("Sell In Lien With Loan", function () {
       minAmount: 0,
       rate: "1000",
       defaultRate: "2000",
-      period: MONTH_SECONDS,
-      gracePeriod: MONTH_SECONDS,
-      installments: 12
+      duration: MONTH_SECONDS,
+      gracePeriod: MONTH_SECONDS
     }
 
     const collateral: CollateralStruct = {
@@ -118,7 +119,7 @@ describe("Sell In Lien With Loan", function () {
       size: 1
     }
 
-    const fee: FeeTermsStruct = {
+    const feeTerms: FeeTermsStruct = {
       recipient: recipient,
       rate: "200"
     }
@@ -127,7 +128,7 @@ describe("Sell In Lien With Loan", function () {
       lender: lender,
       collateral,
       terms,
-      fee,
+      fee: feeTerms,
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
     }
@@ -142,7 +143,7 @@ describe("Sell In Lien With Loan", function () {
     loanOffer = {
       lender: lender2,
       terms,
-      fee,
+      fee: feeTerms,
       collateral: { ...collateral },
       salt: randomBytes(),
       expiration: await time.latest() + DAY_SECONDS
@@ -223,10 +224,18 @@ describe("Sell In Lien With Loan", function () {
 
               bidOffer.expiration = await time.latest() + DAY_SECONDS;
               bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
+            } else {
+              await time.increase(HALF_MONTH_SECONDS);
+
+              loanOffer.expiration = await time.latest() + DAY_SECONDS;
+              loanOfferSignature = await signLoanOffer(kettle, lender2, loanOffer);
+
+              bidOffer.expiration = await time.latest() + DAY_SECONDS;
+              bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
             }
 
             expect(await testErc721.ownerOf(tokenId)).to.eq(kettle);
-            ({ balance, principal, currentInterest, currentFee, pastFee, pastInterest } = await kettle.payments(lien));
+            ({ debt, interest, fee } = await kettle.currentDebtAmount(lien));
           });
 
           afterEach(async () => {
@@ -237,16 +246,16 @@ describe("Sell In Lien With Loan", function () {
 
             const marketFeeAmount = (BigInt(bidOffer.terms.amount) * BigInt(bidOffer.fee.rate)) / 10_000n;
             const netSellAmount = BigInt(bidOffer.terms.amount) - marketFeeAmount;
-            const netPrincipalAmount = netSellAmount - balance;
+            const netPrincipalAmount = netSellAmount - sellInLienWithLoanLog.debt;
             const netPurchaseAmount = BigInt(bidOffer.terms.amount) - BigInt(bidOffer.terms.borrowAmount);
 
             // balance checks
             expect(await testErc721.ownerOf(tokenId)).to.equal(kettle);
             expect(await testErc20.balanceOf(seller)).to.equal(sellerBalance_before + netPrincipalAmount);
             expect(await testErc20.balanceOf(buyer)).to.equal(buyerBalance_before - netPurchaseAmount);
-            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before + principal + currentInterest + pastInterest);
+            expect(await testErc20.balanceOf(lender)).to.equal(lenderBalance_before + sellInLienWithLoanLog.principal + sellInLienWithLoanLog.interest);
             expect(await testErc20.balanceOf(lender2)).to.equal(lender2Balance_before - BigInt(bidOffer.terms.borrowAmount));
-            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + currentFee + pastFee);
+            expect(await testErc20.balanceOf(recipient)).to.equal(recipientBalance_before + sellInLienWithLoanLog.fee);
             expect(await testErc20.balanceOf(marketFeeRecipient)).to.equal(marketFeeRecipientBalance_before + marketFeeAmount);
 
             // log checks
@@ -262,6 +271,11 @@ describe("Sell In Lien With Loan", function () {
             expect(sellInLienWithLoanLog.netAmount).to.equal(netSellAmount);
             expect(sellInLienWithLoanLog.borrowAmount).to.equal(borrowLog.lien.principal).to.equal(bidOffer.terms.borrowAmount);
 
+            expect(sellInLienWithLoanLog.principal).to.equal(principal);
+            expect(sellInLienWithLoanLog.debt).to.be.within(debt, debt + 100n);
+            expect(sellInLienWithLoanLog.interest).to.be.within(interest, interest + 100n);
+            expect(sellInLienWithLoanLog.fee).to.be.within(fee, fee + 100n);
+
             await expect(receipt.ownerOf(lienId)).to.be.revertedWith("NOT_MINTED");
             expect(await receipt.ownerOf(borrowLog.lienId))
               .to.equal(loanOffer.lender)
@@ -269,7 +283,7 @@ describe("Sell In Lien With Loan", function () {
           })
 
           it("bid > balance", async () => {
-            bidOffer.terms.amount = balance * 2n;
+            bidOffer.terms.amount = debt * 2n;
             bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
 
             txn = await kettle.connect(seller).sellInLienWithLoan(
@@ -285,7 +299,7 @@ describe("Sell In Lien With Loan", function () {
           })
 
           it("balance > bid > principal + interest", async () => {
-            bidOffer.terms.amount = principal + currentInterest + pastInterest + pastFee + (currentFee / 2n)
+            bidOffer.terms.amount = principal + interest + (fee / 2n)
             bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
             
             txn = await kettle.connect(seller).sellInLienWithLoan(
@@ -301,7 +315,7 @@ describe("Sell In Lien With Loan", function () {
           });
 
           it("balance > bid > principal", async () => {
-            bidOffer.terms.amount = principal + (currentInterest / 2n) + pastInterest;
+            bidOffer.terms.amount = principal + (interest / 2n);
             bidOfferSignature = await signMarketOffer(kettle, buyer, bidOffer);
 
             txn = await kettle.connect(seller).sellInLienWithLoan(
