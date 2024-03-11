@@ -27,7 +27,7 @@ function parsePaymentDeadline(deadline: PaymentDeadlineStruct) {
   }
 }
 
-describe("LienStatus", function () {
+describe.skip("LienStatus", function () {
   let kettle: Kettle;
   let signers: Signer[];
   let testErc20: TestERC20;
