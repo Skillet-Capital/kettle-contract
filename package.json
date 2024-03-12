@@ -3,6 +3,7 @@
   "version": "3.0.0",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@nomicfoundation/hardhat-verify": "^2.0.4",
     "hardhat": "^2.19.5",
     "hardhat-contract-sizer": "^2.10.0"
   },

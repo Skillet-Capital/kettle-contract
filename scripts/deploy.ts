@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers, run } from "hardhat";
 
 async function main() {
   const [owner] = await ethers.getSigners();
@@ -28,6 +28,18 @@ async function main() {
     compoundInterest: await compoundInterest.getAddress(),
     receipt: await receipt.getAddress(),
     kettle: await kettle.getAddress(),
+  });
+
+  await new Promise(res => setTimeout(res, 1000 * 20));
+
+  await run("verify:verify", {
+    address: receipt.target,
+    constructorArguments: []
+  });
+
+  await run("verify:verify", {
+    address: kettle.target,
+    constructorArguments: [receipt.target],
   });
 }
 
