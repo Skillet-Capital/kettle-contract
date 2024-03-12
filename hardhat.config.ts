@@ -4,6 +4,7 @@ import 'hardhat-ignore-warnings';
 import "hardhat-gas-reporter";
 import "hardhat-tracer";
 import "hardhat-contract-sizer";
+import "@nomicfoundation/hardhat-verify";
 
 import "@openzeppelin/hardhat-upgrades";
 
