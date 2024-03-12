@@ -29,23 +29,24 @@ library CompoundInterest {
         );
 
         // lien is past tenor
+        uint256 debtWithRate;
         if (block.timestamp > startTime + duration) {
-            debt = computeCurrentDebt(
-                debtWithFee, 
+            debtWithRate = computeCurrentDebt(
+                principal, 
                 rate,
                 startTime, 
                 startTime + duration
             );
 
-            debt = computeCurrentDebt(
-                debt, 
+            debtWithRate = computeCurrentDebt(
+                debtWithRate, 
                 defaultRate, 
                 startTime + duration, 
                 block.timestamp
             );
         } else {
-            debt = computeCurrentDebt(
-                debtWithFee, 
+            debtWithRate = computeCurrentDebt(
+                principal, 
                 rate, 
                 startTime, 
                 block.timestamp
@@ -53,7 +54,8 @@ library CompoundInterest {
         }
 
         feeInterest = debtWithFee - principal;
-        lenderInterest = debt - debtWithFee;
+        lenderInterest = debtWithRate - principal;
+        debt = principal + feeInterest + lenderInterest;
     }
 
     /**
