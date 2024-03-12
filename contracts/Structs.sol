@@ -31,14 +31,12 @@ struct Lien {
     uint256 tokenId;
     uint256 size;
     uint256 principal;
+    uint256 fee;
     uint256 rate;
     uint256 defaultRate;
-    uint256 fee;
-    uint256 period;
+    uint256 duration;
     uint256 gracePeriod;
-    uint256 installments;
     uint256 startTime;
-    LienState state;
 }
 
 enum Criteria { SIMPLE, PROOF }
@@ -63,9 +61,8 @@ struct LoanOfferTerms {
     uint256 minAmount;
     uint256 rate;
     uint256 defaultRate;
-    uint256 period;
+    uint256 duration;
     uint256 gracePeriod;
-    uint256 installments;
 }
 
 struct LoanOffer {
@@ -82,9 +79,8 @@ struct BorrowOfferTerms {
     uint256 amount;
     uint256 rate;
     uint256 defaultRate;
-    uint256 period;
+    uint256 duration;
     uint256 gracePeriod;
-    uint256 installments;
 }
 
 struct BorrowOffer {

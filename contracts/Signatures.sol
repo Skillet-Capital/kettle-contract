@@ -110,9 +110,8 @@ contract Signatures {
             "uint256 minAmount,",
             "uint256 rate,",
             "uint256 defaultRate,",
-            "uint256 period,",
-            "uint256 gracePeriod,",
-            "uint256 installments",
+            "uint256 duration,",
+            "uint256 gracePeriod",
             ")"
         );
 
@@ -141,9 +140,8 @@ contract Signatures {
             "uint256 amount,",
             "uint256 rate,",
             "uint256 defaultRate,",
-            "uint256 period,",
-            "uint256 gracePeriod,",
-            "uint256 installments",
+            "uint256 duration,",
+            "uint256 gracePeriod",
             ")"
         );
 
@@ -256,9 +254,8 @@ contract Signatures {
                     terms.minAmount,
                     terms.rate,
                     terms.defaultRate,
-                    terms.period,
-                    terms.gracePeriod,
-                    terms.installments
+                    terms.duration,
+                    terms.gracePeriod
                 )
             );
     }
@@ -292,9 +289,8 @@ contract Signatures {
                     terms.amount,
                     terms.rate,
                     terms.defaultRate,
-                    terms.period,
-                    terms.gracePeriod,
-                    terms.installments
+                    terms.duration,
+                    terms.gracePeriod
                 )
             );
     }

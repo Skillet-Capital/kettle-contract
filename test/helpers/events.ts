@@ -2,13 +2,13 @@ import { ethers } from "hardhat";
 import { ContractTransactionReceipt } from "ethers"
 import { Kettle__factory } from "../../typechain-types";
 
-import { LienStruct, LienStateStruct } from "../../typechain-types/contracts/Kettle";
+import { LienStruct } from "../../typechain-types/contracts/Kettle";
 
 export async function getTimestamp(block: number) {
   return ethers.provider.getBlock(block).then((block) => block!.timestamp);
 }
 
-type LogName = "Borrow" | "BuyInLien" | "BuyInLienWithLoan" | "BuyWithLoan" | "Claim" | "Payment" | "Refinance" | "Repay" | "SellInLien" | "SellInLienWithLoan" | "SellWithLoan" | "MarketOrder";
+type LogName = "Borrow" | "BuyInLien" | "BuyInLienWithLoan" | "BuyWithLoan" | "Claim" | "Refinance" | "Repay" | "SellInLien" | "SellInLienWithLoan" | "SellWithLoan" | "MarketOrder";
 
 function extractLog(receipt: ContractTransactionReceipt, logName: LogName) {
   const KettleInterface = Kettle__factory.createInterface();
@@ -40,57 +40,13 @@ export function extractBorrowLog(receipt: ContractTransactionReceipt): BorrowLog
       tokenId: lien.tokenId,
       size: lien.size,
       principal: lien.principal,
+      fee: lien.fee,
       rate: lien.rate,
       defaultRate: lien.defaultRate,
-      fee: lien.fee,
-      period: lien.period,
+      duration: lien.duration,
       gracePeriod: lien.gracePeriod,
-      installments: lien.installments,
-      startTime: lien.startTime,
-      state: {
-        installment: 0,
-        principal: lien.principal
-      }
+      startTime: lien.startTime
     }
-  }
-}
-
-export function extractPaymentLog(receipt: ContractTransactionReceipt) {
-  const KettleInterface = Kettle__factory.createInterface();
-  const { topicHash } = KettleInterface.getEvent("Payment");
-
-  const log = receipt!.logs.find((log) => log.topics[0] === topicHash);
-  const payment = KettleInterface.decodeEventLog("Payment", log!.data, log!.topics);
-
-  return {
-    lienId: payment.lienId,
-    installment: payment.installment,
-    principal: payment.principal,
-    pastInterest: payment.pastInterest,
-    pastFee: payment.pastFee,
-    currentInterest: payment.currentInterest,
-    currentFee: payment.currentFee,
-    newPrincipal: payment.newPrincipal,
-    newInstallment: payment.newInstallment
-  }
-}
-
-export function extractRepayLog(receipt: ContractTransactionReceipt) {
-  const KettleInterface = Kettle__factory.createInterface();
-  const { topicHash } = KettleInterface.getEvent("Repay");
-
-  const log = receipt!.logs.find((log) => log.topics[0] === topicHash);
-  const repay = KettleInterface.decodeEventLog("Repay", log!.data, log!.topics);
-
-  return {
-    lienId: repay.lienId,
-    installment: repay.installment,
-    balance: repay.balance,
-    principal: repay.principal,
-    pastInterest: repay.pastInterest,
-    pastFee: repay.pastFee,
-    currentInterest: repay.currentInterest,
-    currentFee: repay.currentFee
   }
 }
 
@@ -105,12 +61,26 @@ export function extractRefinanceLog(receipt: ContractTransactionReceipt) {
     oldLienId: repay.oldLienId,
     newLienId: repay.newLienId,
     amount: repay.amount,
-    balance: repay.balance,
+    debt: repay.debt,
     principal: repay.principal,
-    pastInterest: repay.pastInterest,
-    pastFee: repay.pastFee,
-    currentInterest: repay.currentInterest,
-    currentFee: repay.currentFee
+    interest: repay.interest,
+    fee: repay.fee
+  }
+}
+
+export function extractRepayLog(receipt: ContractTransactionReceipt) {
+  const KettleInterface = Kettle__factory.createInterface();
+  const { topicHash } = KettleInterface.getEvent("Repay");
+
+  const log = receipt!.logs.find((log) => log.topics[0] === topicHash);
+  const repay = KettleInterface.decodeEventLog("Repay", log!.data, log!.topics);
+
+  return {
+    lienId: repay.lienId,
+    debt: repay.debt,
+    principal: repay.principal,
+    interest: repay.interest,
+    fee: repay.fee
   }
 }
 
@@ -161,12 +131,10 @@ export function extractBuyInLienLog(receipt: ContractTransactionReceipt) {
     size: log.size,
     amount: log.amount,
     netAmount: log.netAmount,
-    balance: log.balance,
+    debt: log.debt,
     principal: log.principal,
-    pastInterest: log.pastInterest,
-    pastFee: log.pastFee,
-    currentInterest: log.currentInterest,
-    currentFee: log.currentFee
+    interest: log.interest,
+    fee: log.fee
   }
 }
 
@@ -183,12 +151,10 @@ export function extractSellInLienLog(receipt: ContractTransactionReceipt) {
     size: log.size,
     amount: log.amount,
     netAmount: log.netAmount,
-    balance: log.balance,
+    debt: log.debt,
     principal: log.principal,
-    pastInterest: log.pastInterest,
-    pastFee: log.pastFee,
-    currentInterest: log.currentInterest,
-    currentFee: log.currentFee
+    interest: log.interest,
+    fee: log.fee
   }
 }
 
@@ -207,12 +173,10 @@ export function extractBuyInLienWithLoanLog(receipt: ContractTransactionReceipt)
     amount: log.amount,
     netAmount: log.netAmount,
     borrowAmount: log.borrowAmount,
-    balance: log.balance,
+    debt: log.debt,
     principal: log.principal,
-    pastInterest: log.pastInterest,
-    pastFee: log.pastFee,
-    currentInterest: log.currentInterest,
-    currentFee: log.currentFee
+    interest: log.interest,
+    fee: log.fee
   }
 }
 
@@ -231,12 +195,10 @@ export function extractSellInLienWithLoanLog(receipt: ContractTransactionReceipt
     amount: log.amount,
     netAmount: log.netAmount,
     borrowAmount: log.borrowAmount,
-    balance: log.balance,
+    debt: log.debt,
     principal: log.principal,
-    pastInterest: log.pastInterest,
-    pastFee: log.pastFee,
-    currentInterest: log.currentInterest,
-    currentFee: log.currentFee
+    interest: log.interest,
+    fee: log.fee
   }
 }
 

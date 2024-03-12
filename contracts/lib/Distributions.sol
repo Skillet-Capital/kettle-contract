@@ -19,16 +19,14 @@ library Distributions {
      * @notice Distributes loan payments to lenders and recipients.
      *
      * @param currency The address of the currency in which payments are made.
-     * @param amount The total amount to distribute, which may include balance, principal, past interest, past fee, current interest, and current fee.
-     * @param balance The outstanding balance to be covered by the distribution.
+     * @param amount The total amount to distribute, which may include debt, principal, past interest, past fee, current interest, and current fee.
+     * @param debt The outstanding debt to be covered by the distribution.
      * @param principal The principal amount to be distributed.
-     * @param pastInterest The accumulated past interest amount.
-     * @param pastFee The accumulated past fee amount.
-     * @param currentInterest The current interest amount.
-     * @param currentFee The current fee amount.
+     * @param interest The accumulated interest amount
+     * @param fee The accumulated fee amount
      * @param lender The address of the lender.
      * @param feeRecipient The address of the fee recipient.
-     * @param primaryPayer The primary payer responsible for covering the outstanding balance.
+     * @param primaryPayer The primary payer responsible for covering the outstanding debt.
      * @param residualPayer The payer responsible for covering the residual amount.
      * @param residualRecipient The recipient of the residual amount.
      *
@@ -36,35 +34,30 @@ library Distributions {
      * - The provided amounts and addresses must align with the specified parameters.
      *
      * @dev The function distributes the provided amount among lenders and recipients based on predefined tranches. Tranches include principal, interest, and fee components.
-     * It takes into account the outstanding balance and ensures proper distribution to both the primary and residual payers.
+     * It takes into account the outstanding debt and ensures proper distribution to both the primary and residual payers.
      * The function calculates and transfers the amounts accordingly, considering different scenarios based on the relationship between the total amount and the tranches.
      */
     function distributeLoanPayments(
         address currency,
         uint256 amount,
-        uint256 balance,
+        uint256 debt,
         uint256 principal,
-        uint256 pastInterest,
-        uint256 pastFee,
-        uint256 currentInterest,
-        uint256 currentFee,
+        uint256 interest,
+        uint256 fee,
         address lender,
         address feeRecipient,
         address primaryPayer,
         address residualPayer,
         address residualRecipient
     ) external {
-        uint256 interest = pastInterest + currentInterest;
-        uint256 fee = pastFee + currentFee;
-
-        if (amount < balance) {
+        if (amount < debt) {
 
             DistributionTranche[3] memory tranches = _createTranches(
                 principal, 
                 lender,
-                pastInterest + currentInterest, 
+                interest, 
                 lender, 
-                pastFee + currentFee, 
+                fee, 
                 feeRecipient
             );
 
@@ -121,7 +114,7 @@ library Distributions {
             }
 
         } else {
-            uint256 netPrincipalReceived = amount - balance;
+            uint256 netPrincipalReceived = amount - debt;
             _transferCurrency(currency, primaryPayer, residualRecipient, netPrincipalReceived);
             _transferCurrency(currency, primaryPayer, lender, interest + principal);
             _transferCurrency(currency, primaryPayer, feeRecipient, fee);
