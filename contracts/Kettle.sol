@@ -15,6 +15,7 @@ import { OfferMatcher } from "./OfferMatcher.sol";
 import { Transfer } from "./Transfer.sol";
 
 import { CompoundInterest } from "./models/CompoundInterest.sol";
+import { CompoundInterest } from "./models/CompoundInterest.sol";
 import { Distributions } from "./lib/Distributions.sol";
 
 import { ILenderReceipt } from "./LenderReceipt.sol";
@@ -252,9 +253,12 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         Distributions.distributeLoanPayments(
             lien.currency,
             amount,                 // distribute new principal
-            debt,
-            lien.principal + interest,
-            fee,
+            balance,
+            principal,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
             getLender(oldLienId),   // original lender
             lien.recipient,         // original recipient
             offer.lender,           // primary payer
@@ -544,9 +548,12 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         Distributions.distributeLoanPayments(
             lien.currency, 
             netAmount,                  // distribute net ask amount
-            debt, 
-            lien.principal + interest,
-            fee,
+            balance, 
+            principal,
+            pastInterest, 
+            pastFee, 
+            currentInterest, 
+            currentFee, 
             getLender(lienId), 
             lien.recipient, 
             msg.sender,                 // buyer pays primary amount
@@ -609,9 +616,12 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                      // distribute net bid amount
-            debt,
-            lien.principal + interest,
-            fee,
+            balance,
+            principal,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
             getLender(lienId),
             lien.recipient,
             bidOffer.maker,                 // bidder pays primary amount
@@ -780,9 +790,12 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         Distributions.distributeLoanPayments(
             lien.currency,
             netAmount,                  // distribute net amount bid amount
-            debt,
-            lien.principal + interest,
-            fee,
+            balance,
+            principal,
+            pastInterest,
+            pastFee,
+            currentInterest,
+            currentFee,
             getLender(lienId),
             lien.recipient,
             address(this),              // this is the primary payer
