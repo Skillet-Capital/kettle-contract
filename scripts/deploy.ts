@@ -9,15 +9,15 @@ async function main() {
   const distributions = await Distributions.deploy();
 
   /* Deploy Models */
-  const fixedModel = await ethers.getContractFactory("FixedInterest");
-  const fixedInterest = await fixedModel.deploy();
+  const CompoundInterest = await ethers.getContractFactory("CompoundInterest");
+  const compoundInterest = await CompoundInterest.deploy();
 
   /* Deploy Receipt */
   const receipt = await ethers.deployContract("LenderReceipt");
   
   const kettle = await ethers.deployContract(
     "Kettle", 
-    [receipt], { libraries: { FixedInterest: fixedInterest.target, Distributions: distributions.target } });
+    [receipt], { libraries: { CompoundInterest: compoundInterest.target, Distributions: distributions.target } });
   await kettle.waitForDeployment();
 
   /* Set kettle as a supplier of receipts */
@@ -25,7 +25,7 @@ async function main() {
 
   console.log({
     distributions: await distributions.getAddress(),
-    fixedInterest: await fixedInterest.getAddress(),
+    compoundInterest: await compoundInterest.getAddress(),
     receipt: await receipt.getAddress(),
     kettle: await kettle.getAddress(),
   });

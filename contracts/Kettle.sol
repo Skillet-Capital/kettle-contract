@@ -5,8 +5,8 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { ERC721Holder } from "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import { ERC1155Holder } from "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Holder.sol";
 
-import { LoanOffer, BorrowOffer, Lien, LienState, MarketOffer, Side } from "./Structs.sol";
-import { InvalidLien, LienDefaulted, LienIsCurrent, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, BidCannotBorrow, BidRequiresLoan, InvalidMarketOfferAmount, RepayOnLastInstallment } from "./Errors.sol";
+import { LoanOffer, BorrowOffer, Lien, MarketOffer, Side } from "./Structs.sol";
+import { InvalidLien, LienDefaulted, LienIsCurrent, MakerIsNotBorrower, InsufficientAskAmount, OnlyBorrower, OfferNotAsk, OfferNotBid, BidNotWithLoan, BidCannotBorrow, BidRequiresLoan, InvalidMarketOfferAmount } from "./Errors.sol";
 
 import { IKettle } from "./interfaces/IKettle.sol";
 import { OfferController } from "./OfferController.sol";
@@ -253,8 +253,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             lien.currency,
             amount,                 // distribute new principal
             debt,
-            lien.principal,
-            interest,
+            lien.principal + interest,
             fee,
             getLender(oldLienId),   // original lender
             lien.recipient,         // original recipient
@@ -546,8 +545,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             lien.currency, 
             netAmount,                  // distribute net ask amount
             debt, 
-            lien.principal,
-            interest, 
+            lien.principal + interest,
             fee,
             getLender(lienId), 
             lien.recipient, 
@@ -612,8 +610,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             lien.currency,
             netAmount,                      // distribute net bid amount
             debt,
-            lien.principal,
-            interest,
+            lien.principal + interest,
             fee,
             getLender(lienId),
             lien.recipient,
@@ -784,8 +781,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
             lien.currency,
             netAmount,                  // distribute net amount bid amount
             debt,
-            lien.principal,
-            interest,
+            lien.principal + interest,
             fee,
             getLender(lienId),
             lien.recipient,
