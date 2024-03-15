@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import { Lien, MarketOffer, LoanOffer } from "./Structs.sol";
+import { Lien, MarketOffer, LoanOffer, BorrowOffer } from "./Structs.sol";
 import { ItemTypeMismatch, CollectionMismatch, CurrencyMismatch, SizeMismatch } from "./Errors.sol";
 
 /**
@@ -115,6 +115,42 @@ contract OfferMatcher {
         }
 
         if (loanOffer.collateral.size != lien.size) {
+            revert SizeMismatch();
+        }
+    }
+
+    /**
+     * @dev Internal function to match borrow offer details with lien details.
+     *
+     * @param borrowOffer Borrow offer details to compare.
+     * @param lien Lien details to compare.
+     *
+     * Requirements:
+     * - The collateral collection in the loan offer must match the collateral collection in the lien.
+     * - The currency in the loan offer must match the currency in the lien.
+     * - The collateral size in the loan offer must match the collateral size in the lien.
+     *
+     * @dev throws CollectionMismatch if the collateral collections do not match.
+     * @dev throws CurrencyMismatch if the currencies do not match.
+     * @dev throws SizeMismatch if the collateral sizes do not match.
+     */
+    function _matchBorrowOfferWithLien(
+        BorrowOffer calldata borrowOffer,
+        Lien calldata lien
+    ) internal pure {
+        if (borrowOffer.collateral.itemType != lien.itemType) {
+            revert ItemTypeMismatch();
+        }
+
+        if (borrowOffer.collateral.collection != lien.collection) {
+            revert CollectionMismatch();
+        }
+
+        if (borrowOffer.terms.currency != lien.currency) {
+            revert CurrencyMismatch();
+        }
+
+        if (borrowOffer.collateral.size != lien.size) {
             revert SizeMismatch();
         }
     }

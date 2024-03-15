@@ -277,6 +277,62 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         );
     }
 
+    /**
+     * @notice Allows another lender to refinance an existing loan with a new borrow offer.
+     * @param oldLienId The identifier of the existing lien being refinanced.
+     * @param lien The details of the existing loan (calldata).
+     * @param offer The details of the borrow offer, including collateral, terms, etc.
+     * @param signature The signature provided by the borrower to verify the new loan agreement.
+     * @param proof An array of proof elements to verify the collateral ownership.
+     * @return newLienId The identifier of the newly created lien for the refinanced funds.
+     */
+    function refinanceWithBorrowOffer(
+        uint256 oldLienId,
+        Lien calldata lien,
+        BorrowOffer calldata offer,
+        bytes calldata signature,
+        bytes32[] calldata proof
+    ) public validateLien(lien, oldLienId) lienIsCurrent(lien) returns (uint256 newLienId) {
+        if (offer.borrower != lien.borrower) revert MakerIsNotBorrower();
+        
+        _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, lien.tokenId, proof);
+        _matchBorrowOfferWithLien(offer, lien);
+
+        // borrow funds through the refinance and get the new lien identifier
+        newLienId = _loan(offer, signature);
+
+        // get payment details of the existing lien
+        (uint256 debt, uint256 fee, uint256 interest) = currentDebtAmount(lien);
+        
+        // distribute loan payments from new lender to old lender and pay or transfer net funds from borrower
+        Distributions.distributeLoanPayments(
+            lien.currency,
+            offer.terms.amount,           // distribute new principal
+            debt,
+            lien.principal + interest,
+            fee,
+            getLender(oldLienId),   // original lender
+            lien.recipient,         // original recipient
+            msg.sender,             // primary payer
+            lien.borrower,          // pays any remaining amount
+            lien.borrower           // receives net principal
+        );
+
+        // burn the lender receipt for the old lien
+        LENDER_RECEIPT.burn(oldLienId);
+        delete liens[oldLienId];
+
+        emit Refinance(
+            oldLienId,
+            newLienId,
+            offer.terms.amount,
+            debt,
+            lien.principal,
+            interest,
+            fee
+        );
+    }
+
     /*//////////////////////////////////////////////////
                     REPAY FLOWS
     //////////////////////////////////////////////////*/
