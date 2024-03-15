@@ -5,7 +5,7 @@ import { IOfferController } from "./interfaces/IOfferController.sol";
 import { Signatures } from "./Signatures.sol";
 
 import { Lien, LoanOffer, BorrowOffer, MarketOffer } from "./Structs.sol";
-import { OfferExpired, InvalidLoanAmount, InsufficientOffer, OfferUnavailable, BidCannotBorrow } from "./Errors.sol";
+import { OfferExpired, InvalidLoanAmount, InsufficientOffer, OfferUnavailable, BidCannotBorrow, InvalidFee } from "./Errors.sol";
 
 /**
  * @title Kettle Offer Controller
@@ -47,6 +47,9 @@ contract OfferController is IOfferController, Signatures {
         Lien memory lien,
         bytes calldata signature
     ) internal {
+        if (offer.fee.rate > 0 && offer.fee.recipient == address(0)) {
+            revert InvalidFee();
+        }
         
         bytes32 _offerHash = _hashLoanOffer(offer);
         _validateOffer(_offerHash, offer.lender, offer.expiration, offer.salt, signature);
@@ -89,6 +92,9 @@ contract OfferController is IOfferController, Signatures {
         BorrowOffer calldata offer,
         bytes calldata signature
     ) internal {
+        if (offer.fee.rate > 0 && offer.fee.recipient == address(0)) {
+            revert InvalidFee();
+        }
         
         bytes32 _offerHash = _hashBorrowOffer(offer);
         _validateOffer(_offerHash, offer.borrower, offer.expiration, offer.salt, signature);
@@ -117,6 +123,9 @@ contract OfferController is IOfferController, Signatures {
         MarketOffer calldata offer,
         bytes calldata signature
     ) internal {
+        if (offer.fee.rate > 0 && offer.fee.recipient == address(0)) {
+            revert InvalidFee();
+        }
 
         bytes32 _offerHash = _hashMarketOffer(offer);
         _validateOffer(_offerHash, offer.maker, offer.expiration, offer.salt, signature);

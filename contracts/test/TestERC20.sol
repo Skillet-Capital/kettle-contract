@@ -4,10 +4,10 @@ pragma solidity ^0.8.19;
 import { ERC20 } from "solmate/src/tokens/ERC20.sol";
 
 // Used for minting test ERC20s in our tests
-contract TestERC20 is ERC20("Test20", "TST20", 6) {
+contract TestERC20 is ERC20 {
     bool public blocked;
 
-    constructor() {
+    constructor(uint8 decimals) ERC20("Test20", "TST20", decimals) {
         blocked = false;
     }
 

@@ -56,7 +56,7 @@ export async function getFixture(): Promise<Fixture> {
   await receipt.setSupplier(kettle, 1)
 
   /* Deploy TestERC20 */
-  const testErc20 = await ethers.deployContract("TestERC20");
+  const testErc20 = await ethers.deployContract("TestERC20", [6]);
   await testErc20.waitForDeployment();
 
   /* Deploy TestERC721 */

@@ -34,3 +34,5 @@ error InvalidSignature();
 error InvalidVParameter();
 
 error RepayOnLastInstallment();
+
+error InvalidFee();
