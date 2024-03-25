@@ -40,12 +40,33 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
 
     function currentDebtAmount(Lien memory lien) public view returns (uint256 debt, uint256 fee, uint256 interest) {
         return CompoundInterest.currentDebtAmount(
+            block.timestamp,
             lien.principal, 
             lien.startTime,
             lien.duration, 
             lien.fee, 
             lien.rate, 
             lien.defaultRate
+        );
+    }
+
+    function currentDebtAmountExact(
+        uint256 timestamp, 
+        uint256 principal, 
+        uint256 startTime,
+        uint256 duration,
+        uint256 fee,
+        uint256 rate,
+        uint256 defaultRate
+    ) public view returns (uint256 debt, uint256 feeInterest, uint256 lenderInterest) {
+        return CompoundInterest.currentDebtAmount(
+            timestamp,
+            principal, 
+            startTime,
+            duration, 
+            fee, 
+            rate, 
+            defaultRate
         );
     }
 
@@ -413,7 +434,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
      ) public returns (uint256 netAmount) {
 
         _verifyCollateral(offer.collateral.criteria, offer.collateral.identifier, tokenId, proof);
-        _takeMarketOffer(offer, signature);
+        _takeMarketOffer(offer, tokenId, signature);
         
         if (offer.side == Side.BID) {
             if (offer.terms.withLoan) revert BidRequiresLoan();
@@ -472,7 +493,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, tokenId, askProof);
 
         _matchMarketOfferWithLoanOffer(askOffer, loanOffer);
-        _takeMarketOffer(askOffer, askOfferSignature);
+        _takeMarketOffer(askOffer, tokenId, askOfferSignature);
 
         // start a lien (borrow min of requested amount and ask offer amount)
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
@@ -535,7 +556,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, tokenId, bidProof);
 
         _matchMarketOfferWithLoanOffer(bidOffer, loanOffer);
-        _takeMarketOffer(bidOffer, bidOfferSignature);
+        _takeMarketOffer(bidOffer, tokenId, bidOfferSignature);
 
         // start loan (borrow amount specified in bid)
         lienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, tokenId, bidOffer.maker, loanOfferSignature);
@@ -584,7 +605,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
 
         _verifyCollateral(askOffer.collateral.criteria, askOffer.collateral.identifier, lien.tokenId, proof);
         _matchMarketOfferWithLien(askOffer, lien);
-        _takeMarketOffer(askOffer, askOfferSignature);
+        _takeMarketOffer(askOffer, lien.tokenId, askOfferSignature);
 
         // pay market fees (buyer pays fees)
         uint256 netAmount = _payMarketFees(askOffer.terms.currency, msg.sender, askOffer.fee.recipient, askOffer.terms.amount, askOffer.fee.rate);
@@ -654,7 +675,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
 
         _verifyCollateral(bidOffer.collateral.criteria, bidOffer.collateral.identifier, lien.tokenId, proof);
         _matchMarketOfferWithLien(bidOffer, lien);
-        _takeMarketOffer(bidOffer, bidOfferSignature);
+        _takeMarketOffer(bidOffer, lien.tokenId, bidOfferSignature);
 
         // pay market fees (bidder pays fees)
         uint256 netAmount = _payMarketFees(bidOffer.terms.currency, bidOffer.maker, bidOffer.fee.recipient, bidOffer.terms.amount, bidOffer.fee.rate);
@@ -732,7 +753,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         _matchMarketOfferWithLien(askOffer, lien);
         _matchLoanOfferWithLien(loanOffer, lien);
 
-        _takeMarketOffer(askOffer, askOfferSignature);
+        _takeMarketOffer(askOffer, lien.tokenId, askOfferSignature);
 
         // start new loan
         uint256 _borrowAmount = Math.min(amount, askOffer.terms.amount);
@@ -818,7 +839,7 @@ contract Kettle is IKettle, Transfer, OfferController, CollateralVerifier, Offer
         _matchMarketOfferWithLien(bidOffer, lien);
         _matchLoanOfferWithLien(loanOffer, lien);
 
-        _takeMarketOffer(bidOffer, bidOfferSignature);
+        _takeMarketOffer(bidOffer, lien.tokenId, bidOfferSignature);
 
         // borrow from loan offer
         newLienId = _borrow(loanOffer, bidOffer.terms.borrowAmount, lien.tokenId, bidOffer.maker, loanOfferSignature);

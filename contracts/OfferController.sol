@@ -73,7 +73,15 @@ contract OfferController is IOfferController, Signatures {
             _amountTaken[_offerHash] = __amountTaken + lien.principal;
         }
 
-        emit LoanOfferTaken(lienId, msg.sender, _offerHash);
+        emit LoanOfferTaken(
+            lienId, 
+            msg.sender, 
+            _offerHash,
+            lien.principal,
+            lien.collection,
+            lien.tokenId,
+            offer
+        );
     }
 
     /**
@@ -103,7 +111,14 @@ contract OfferController is IOfferController, Signatures {
         // mark offer as taken
         cancelledOrFulfilled[offer.borrower][offer.salt] = 1;
 
-        emit BorrowOfferTaken(lienId, msg.sender, _offerHash);
+        emit BorrowOfferTaken(
+            lienId, 
+            msg.sender,
+            _offerHash,
+            offer.collateral.collection,
+            offer.collateral.identifier,
+            offer
+        );
     }
 
     /**
@@ -121,6 +136,7 @@ contract OfferController is IOfferController, Signatures {
      */
     function _takeMarketOffer(
         MarketOffer calldata offer,
+        uint256 tokenId,
         bytes calldata signature
     ) internal {
         if (offer.fee.rate > 0 && offer.fee.recipient == address(0)) {
@@ -139,7 +155,13 @@ contract OfferController is IOfferController, Signatures {
         // mark offer as taken
         cancelledOrFulfilled[offer.maker][offer.salt] = 1;
 
-        emit MarketOfferTaken(msg.sender, _hashMarketOffer(offer));
+        emit MarketOfferTaken(
+            msg.sender, 
+            _hashMarketOffer(offer),
+            offer.collateral.collection,
+            tokenId,
+            offer
+        );
     }
 
     /**

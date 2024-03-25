@@ -9,6 +9,7 @@ library CompoundInterest {
     uint256 private constant _BASIS_POINTS = 10_000;
 
     function currentDebtAmount(
+      uint256 timestamp,
       uint256 principal,
       uint256 startTime,
       uint256 duration,
@@ -25,12 +26,12 @@ library CompoundInterest {
             principal, 
             fee,
             startTime, 
-            block.timestamp
+            timestamp
         );
 
         // lien is past tenor
         uint256 debtWithRate;
-        if (block.timestamp > startTime + duration) {
+        if (timestamp > startTime + duration) {
             debtWithRate = computeCurrentDebt(
                 principal, 
                 rate,
@@ -42,14 +43,14 @@ library CompoundInterest {
                 debtWithRate, 
                 defaultRate, 
                 startTime + duration, 
-                block.timestamp
+                timestamp
             );
         } else {
             debtWithRate = computeCurrentDebt(
                 principal, 
                 rate, 
                 startTime, 
-                block.timestamp
+                timestamp
             );
         }
 

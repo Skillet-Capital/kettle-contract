@@ -16,7 +16,7 @@ const DAY_SECONDS = 86400;
 const MONTH_SECONDS = BigInt(DAY_SECONDS * 365 / 12);
 const YEAR_SECONDS = BigInt(DAY_SECONDS * 365);
 
-describe.skip("LienStatus", function () {
+describe("LienStatus", function () {
   let kettle: Kettle;
   let signers: Signer[];
   let testErc20: TestERC20;
