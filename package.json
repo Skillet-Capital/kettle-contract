@@ -2,7 +2,7 @@
   "name": "kettle-v3",
   "version": "3.0.0",
   "scripts": {
-    "build": "npx hardhat clean && npx hardhat compile --config hardhat-build.config.ts",
+    "build": "npx hardhat clean && npx hardhat compile --config ./hardhat-build.config.ts",
     "prepare": "npm run build"
   },
   "devDependencies": {
