@@ -1,6 +1,10 @@
 {
   "name": "kettle-v3",
   "version": "3.0.0",
+  "scripts": {
+    "build": "npx hardhat clean && npx hardhat compile",
+    "prepare": "npm run build"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
     "@nomicfoundation/hardhat-verify": "^2.0.4",
