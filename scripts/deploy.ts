@@ -2,7 +2,7 @@ import { ethers, run } from "hardhat";
 
 async function main() {
   const [owner] = await ethers.getSigners();
-  console.log(await owner.provider.getBalance(owner));
+  console.log(await owner.getAddress(), await owner.provider.getBalance(owner));
 
   /* Deploy Helpers */
   const Distributions = await ethers.getContractFactory("Distributions");

@@ -7,7 +7,7 @@ import { ERC20 } from "solmate/src/tokens/ERC20.sol";
 contract TestERC20 is ERC20 {
     bool public blocked;
 
-    constructor(uint8 decimals) ERC20("Test20", "TST20", decimals) {
+    constructor(uint8 decimals) ERC20("TestWETH", "TESTWETH", decimals) {
         blocked = false;
     }
 

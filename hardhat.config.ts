@@ -50,7 +50,7 @@ const config: HardhatUserConfig = {
       ]
     },
     blast: {
-      url: 'https://lingering-indulgent-replica.blast-mainnet.quiknode.pro/6667a8f4be701cb6549b415d567bc706fb2f13a8/',
+      url: 'https://rpc.blast.io/',
       accounts: [
         process.env.PK!
       ]
